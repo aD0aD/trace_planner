@@ -1,0 +1,1554 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>轨迹拼接工具</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    html, body { height: 100%; margin: 0; background: #f3f5f9; }
+    #app { display: grid; grid-template-columns: 460px 6px 1fr; height: 100%; }
+    #panel { padding: 12px; overflow: auto; border-right: 1px solid #d8dee9; font: 14px/1.45 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background: #f8fafc; }
+    #resizer { cursor: col-resize; background: #f2f2f2; border-left: 1px solid #ddd; border-right: 1px solid #ddd; }
+    #map { height: 100%; }
+    h2 { margin: 0 0 10px; font-size: 18px; }
+    .box { border: 1px solid #dbe2ea; border-radius: 10px; padding: 10px; margin-bottom: 10px; background: #fff; box-shadow: 0 1px 3px rgba(15,23,42,0.06); }
+    .row { margin: 6px 0; }
+    .label { color: #555; min-width: 130px; display: inline-block; }
+    .value { font-weight: 600; }
+    input[type=range], input[type=number], select { width: 100%; }
+    .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+    button { border: 1px solid #c7d2e0; background: #f7f9fc; border-radius: 7px; padding: 6px 10px; cursor: pointer; }
+    button:hover { background: #edf2f8; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { border-bottom: 1px solid #eee; text-align: left; padding: 6px 4px; }
+    .hint { color: #666; font-size: 12px; }
+    .list { list-style: none; padding-left: 0; margin: 8px 0 0; max-height: 180px; overflow: auto; }
+    .list li { display: flex; align-items: center; gap: 6px; border-bottom: 1px dashed #eee; padding: 6px 0; }
+    .t { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .warn { color: #b71c1c; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 10px; }
+    .tab-btn { border: 1px solid #bbb; background: #f7f7f7; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+    .tab-btn.active { background: #e8f0fe; border-color: #7ba7ff; }
+    .analysis-target { border: 1px solid #c7d2e0; background: #eef4ff; border-radius: 8px; padding: 8px 10px; }
+    .analysis-target .name { font-weight: 700; color: #1e3a8a; }
+    .seg-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
+    .seg-table th, .seg-table td { border-bottom: 1px solid #e5e7eb; padding: 6px 4px; text-align: left; }
+    .bp-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #d1d9e6; border-radius: 999px; padding: 2px 8px; margin: 4px 6px 0 0; background: #f8fafc; }
+    .tool-pane { display: none; }
+    .tool-pane.active { display: block; }
+    .anno-label {
+      background: rgba(255,255,255,0.92);
+      border: 1px solid #666;
+      border-radius: 4px;
+      padding: 2px 6px;
+      white-space: nowrap;
+      font-size: 12px;
+      line-height: 1.2;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+      cursor: move;
+      user-select: none;
+    }
+    .profile-wrap { border: 1px solid #ddd; border-radius: 6px; background: #fff; padding: 6px; }
+    #liveProfileCanvas { width: 100%; height: 170px; display: block; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div id="panel">
+    <h2>轨迹拼接工具</h2>
+    <div class="tabs">
+      <button id="tabStitch" class="tab-btn active">轨迹拼接工具</button>
+      <button id="tabAnalysis" class="tab-btn">轨迹分析工具</button>
+    </div>
+
+    <div class="box tool-stitch">
+      <div class="row"><b>当前分析轨迹</b></div>
+      <div class="row"><span class="label">轨迹来源</span><span class="value" id="sourceName"></span></div>
+      <div class="row"><span class="label">轨迹点数</span><span class="value" id="totalPts"></span></div>
+      <div class="row"><span class="label">总距离</span><span class="value" id="totalDist"></span></div>
+      <div class="row"><span class="label">总爬升</span><span class="value" id="totalUp"></span></div>
+      <div class="row"><span class="label">总下降</span><span class="value" id="totalDown"></span></div>
+      <div class="row hint" id="methodText"></div>
+    </div>
+
+    <div class="box tool-shared">
+      <div class="row"><b>导入多条轨迹</b></div>
+      <input id="trackInput" type="file" multiple accept=".kml,.kmz,.gpx" />
+      <div class="hint">导入后每条轨迹可单独选中进行“截取片段”。</div>
+      <ul id="trackList" class="list"></ul>
+    </div>
+
+    <div class="box tool-stitch">
+      <div class="row"><b>片段截取（来自选中轨迹）</b></div>
+      <div class="row">起点索引: <span id="startIdx"></span></div>
+      <input id="startRange" type="range" min="0" step="1" />
+      <div class="row">终点索引: <span id="endIdx"></span></div>
+      <input id="endRange" type="range" min="1" step="1" />
+      <div class="btns">
+        <button id="pickBtn">地图选起终点</button>
+        <button id="addClipBtn">加入拼接篮子</button>
+      </div>
+      <div class="row"><span class="label">该段距离</span><span class="value" id="segDist"></span></div>
+      <div class="row"><span class="label">该段爬升</span><span class="value" id="segUp"></span></div>
+      <div class="row"><span class="label">该段下降</span><span class="value" id="segDown"></span></div>
+      <div class="row"><span class="label">截取方向</span><span class="value" id="segDirection"></span></div>
+      <div class="row" style="margin-top:10px;"><b>实时高度图</b></div>
+      <div class="profile-wrap">
+        <canvas id="liveProfileCanvas" width="760" height="220"></canvas>
+      </div>
+      <div class="hint">拖动起点/终点时，图中对应标记会同步移动。</div>
+    </div>
+
+    <div class="box tool-stitch">
+      <div class="row"><b>拼接篮子（按顺序）</b></div>
+      <div class="hint">把不同轨迹的片段按顺序加入，然后一键生成新轨迹。</div>
+      <ul id="clipList" class="list"></ul>
+      <div class="btns">
+        <button id="buildBtn">生成拼接轨迹</button>
+        <button id="clearClipBtn">清空拼接篮子</button>
+      </div>
+      <div class="row hint warn" id="gapWarning"></div>
+    </div>
+
+    <div class="box tool-analysis">
+      <div class="row"><b>分析目标轨迹（当前）</b></div>
+      <div class="analysis-target">
+        <div class="name" id="analysisTargetName">未选择</div>
+        <div class="hint">分析结果（距离/爬升/下降/剖面）都基于这条轨迹。</div>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <span class="label">切换分析目标</span>
+        <select id="analysisTrackSelect"></select>
+      </div>
+    </div>
+
+    <div class="box tool-analysis">
+      <div class="row"><b>爬升计算选项</b></div>
+      <div class="row">
+        <span class="label">算法模式</span>
+        <select id="elevModeSelect">
+          <option value="raw">原始累计（不过滤）</option>
+          <option value="smooth">平滑累计（无阈值）</option>
+          <option value="smooth_threshold" selected>平滑 + 阈值累计</option>
+        </select>
+      </div>
+      <div class="row">
+        <span class="label">平滑窗口（点）</span>
+        <input id="elevSmoothInput" type="number" min="1" max="25" step="2" value="5" />
+      </div>
+      <div class="row">
+        <span class="label">阈值（米）</span>
+        <input id="elevThresholdInput" type="number" min="0" max="20" step="0.1" value="1.0" />
+      </div>
+      <div class="hint">切换后会实时重算当前轨迹、分段统计和剖面相关数据。</div>
+    </div>
+
+    <div class="box tool-analysis">
+      <div class="row"><b>断点分段分析</b></div>
+      <div class="row">
+        <span class="label">断点索引</span>
+        <input id="bpIndexRange" type="range" min="1" max="1" step="1" value="1" />
+      </div>
+      <div class="row"><span class="label">当前断点</span><span class="value" id="bpIndexValue">-</span></div>
+      <div class="btns">
+        <button id="addBpBtn">添加断点</button>
+        <button id="clearBpBtn">清空断点</button>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <span class="label">快速均分段数</span>
+        <input id="splitCountInput" type="number" min="2" max="20" value="5" />
+      </div>
+      <div class="btns">
+        <button id="autoSplitBtn">按段数自动断点</button>
+      </div>
+      <div class="hint">断点用于把整条路线切成多段，自动统计每段里程/爬升/下降。</div>
+      <div id="bpList" class="row hint"></div>
+      <table class="seg-table">
+        <thead><tr><th>段</th><th>索引范围</th><th>距离</th><th>爬升</th><th>下降</th></tr></thead>
+        <tbody id="bpSegTbody"></tbody>
+      </table>
+    </div>
+
+    <div class="box tool-analysis">
+      <div class="row"><b>路线标注</b></div>
+      <div class="row">
+        <span class="label">标注类型</span>
+        <select id="annoType">
+          <option value="start|#16a34a">起点（绿）</option>
+          <option value="end|#dc2626">终点（红）</option>
+          <option value="camp|#2563eb">营地（蓝）</option>
+          <option value="supply|#f59e0b">补给点（橙）</option>
+          <option value="risk|#7c3aed">风险点（紫）</option>
+          <option value="note|#111827" selected>普通标注（黑）</option>
+        </select>
+      </div>
+      <div class="btns">
+        <button id="addAnnoBtn">添加标注</button>
+        <button id="clearAnnoBtn">清空标注</button>
+      </div>
+      <ul id="annoList" class="list"></ul>
+    </div>
+
+    <div class="box tool-analysis">
+      <div class="row"><b>导出与工程</b></div>
+      <div class="btns">
+        <button id="exportKmlBtn">导出KML</button>
+        <button id="exportGpxBtn">导出GPX</button>
+        <button id="exportGeoBtn">导出GeoJSON</button>
+      </div>
+      <div class="btns">
+        <button id="exportElevationBtn">导出爬升下降图PNG</button>
+      </div>
+      <div class="btns">
+        <button id="saveProjectBtn">保存工程(JSON)</button>
+        <button id="loadProjectBtn">加载工程</button>
+        <input id="loadProjectInput" type="file" accept=".json" style="display:none" />
+      </div>
+      <div class="hint">工程会保存当前轨迹、导入轨迹、拼接篮子和标注。</div>
+    </div>
+
+  </div>
+  <div id="resizer"></div>
+  <div id="map"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script>
+const BASE = {route: [], ele: [], prefDist: [], prefUp: [], prefDown: [], meta: {}};
+
+const palette = ['#1e88e5','#43a047','#fb8c00','#8e24aa','#00acc1','#6d4c41'];
+const tracks = []; // {id,name,route,ele,prefDist,prefUp,prefDown,color,layer}
+let activeTrackId = null;
+let activeSource = '未加载轨迹';
+let elevCalcMode = 'smooth_threshold';
+let elevSmoothWindow = 5;
+let elevThreshold = 1.0;
+
+let route = [...BASE.route];
+let ele = [...BASE.ele];
+let prefDist = [...BASE.prefDist];
+let prefUp = [...BASE.prefUp];
+let prefDown = [...BASE.prefDown];
+
+const clips = []; // {trackId, trackName, a, b, reverse}
+const annos = [];
+const breakpoints = []; // 内部断点索引，不含0和末尾
+
+const $ = (id) => document.getElementById(id);
+
+function applyTrackAsActive(t) {
+  if (!t) return;
+  activeTrackId = t.id;
+  activeSource = '导入: ' + t.name;
+  route = [...t.route];
+  ele = [...t.ele];
+  const pref = computePrefix(route, ele);
+  prefDist = pref.prefDist;
+  prefUp = pref.prefUp;
+  prefDown = pref.prefDown;
+}
+
+function syncAnalysisTargetUI() {
+  const nameEl = $('analysisTargetName');
+  if (nameEl) nameEl.textContent = activeSource || '未选择';
+  const sel = $('analysisTrackSelect');
+  if (!sel) return;
+  const currentValue = activeTrackId || '__current__';
+  sel.innerHTML = `<option value="__current__">当前工作轨迹（${activeSource || '未命名'}）</option>`;
+  tracks.forEach((t) => {
+    const op = document.createElement('option');
+    op.value = t.id;
+    op.textContent = `导入轨迹：${t.name} (${t.route.length}点)`;
+    sel.appendChild(op);
+  });
+  sel.value = currentValue;
+}
+
+
+function downloadText(filename, content, mime='text/plain;charset=utf-8') {
+  const blob = new Blob([content], {type: mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function downloadPngFromCanvas(filename, canvas) {
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/png');
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+function safeName(s) {
+  return String(s || 'route').replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 80);
+}
+
+function exportRoutePoster() {
+  if (!route || route.length < 2) {
+    alert('当前没有可导出的轨迹');
+    return;
+  }
+  const W = 2200, H = 2200;
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  // transparent background
+  ctx.clearRect(0, 0, W, H);
+
+  const margin = 120;
+  const mapTop = margin;
+  const mapBottom = H - margin;
+  const mapLeft = margin;
+  const mapRight = W - margin;
+  const mapW = mapRight - mapLeft;
+  const mapH = mapBottom - mapTop;
+
+  // bounds
+  let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
+  for (const p of route) {
+    minLat = Math.min(minLat, p[0]);
+    maxLat = Math.max(maxLat, p[0]);
+    minLon = Math.min(minLon, p[1]);
+    maxLon = Math.max(maxLon, p[1]);
+  }
+  const dLat = Math.max(1e-9, maxLat - minLat);
+  const dLon = Math.max(1e-9, maxLon - minLon);
+  const pad = 0.06;
+  minLat -= dLat * pad; maxLat += dLat * pad;
+  minLon -= dLon * pad; maxLon += dLon * pad;
+
+  const latSpan = maxLat - minLat;
+  const lonSpan = maxLon - minLon;
+  const xScale = mapW / lonSpan;
+  const yScale = mapH / latSpan;
+  const scale = Math.min(xScale, yScale);
+  const drawW = lonSpan * scale;
+  const drawH = latSpan * scale;
+  const ox = mapLeft + (mapW - drawW) / 2;
+  const oy = mapTop + (mapH - drawH) / 2;
+
+  const toXY = (lat, lon) => [ox + (lon - minLon) * scale, oy + (maxLat - lat) * scale];
+
+  // only route
+  ctx.beginPath();
+  route.forEach((p, i) => {
+    const [x, y] = toXY(p[0], p[1]);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = '#111111';
+  ctx.lineWidth = 10;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+
+  const filename = `${safeName(activeSource || 'route')}_poster.png`;
+  downloadPngFromCanvas(filename, canvas);
+}
+
+function routeToKml(routePts, annoItems, name='route_export') {
+  const elev = normalizeElevationForExport(routePts, ele);
+  const coordText = routePts.map((p, i) => {
+    const z = elev ? elev[i] : null;
+    return z == null ? `${p[1]},${p[0]}` : `${p[1]},${p[0]},${z.toFixed(2)}`;
+  }).join(' ');
+  const annoKml = annoItems.map((a, i) => `
+    <Placemark>
+      <name><![CDATA[${a.text || ('标注'+(i+1))}]]></name>
+      <Style><IconStyle><color>${toKmlColor(a.color || '#111827')}</color></IconStyle></Style>
+      <description><![CDATA[索引: ${a.idx}]]></description>
+      <Point><coordinates>${a.latlng[1]},${a.latlng[0]},${(elev && Number.isFinite(a.idx) && elev[a.idx] != null) ? elev[a.idx].toFixed(2) : '0'}</coordinates></Point>
+    </Placemark>`).join('');
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name><![CDATA[${name}]]></name>
+    <description><![CDATA[exported_by=route_stitch_tool_v2_with_elevation]]></description>
+    <Placemark>
+      <name><![CDATA[${name}_line]]></name>
+      <Style><LineStyle><color>ff00a5ff</color><width>4</width></LineStyle></Style>
+      <LineString><tessellate>1</tessellate><coordinates>${coordText}</coordinates></LineString>
+    </Placemark>${annoKml}
+  </Document>
+</kml>`;
+}
+
+function toKmlColor(hex) {
+  // KML color format: aabbggrr
+  const h = String(hex || '#111827').replace('#', '');
+  const r = h.length >= 6 ? h.slice(0, 2) : '11';
+  const g = h.length >= 6 ? h.slice(2, 4) : '18';
+  const b = h.length >= 6 ? h.slice(4, 6) : '27';
+  return `ff${b}${g}${r}`;
+}
+
+function routeToGeoJSON(routePts, annoItems, name='route_export') {
+  return JSON.stringify({
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: {name, kind: 'route'},
+        geometry: {type: 'LineString', coordinates: routePts.map(p => [p[1], p[0]])}
+      },
+      ...annoItems.map((a, i) => ({
+        type: 'Feature',
+        properties: {name: a.text || ('标注'+(i+1)), idx: a.idx, kind: 'annotation'},
+        geometry: {type: 'Point', coordinates: [a.latlng[1], a.latlng[0]]}
+      }))
+    ]
+  }, null, 2);
+}
+
+
+function routeToGpx(routePts, annoItems, name='route_export') {
+  const elev = normalizeElevationForExport(routePts, ele);
+  const trkseg = routePts.map((p, i) => {
+    const elevVal = elev ? elev[i] : null;
+    const eleTag = elevVal != null ? `<ele>${elevVal}</ele>` : '';
+    return `<trkpt lat="${p[0]}" lon="${p[1]}">${eleTag}</trkpt>`;
+  }).join('');
+
+  const wpts = annoItems.map((a, i) => `
+  <wpt lat="${a.latlng[0]}" lon="${a.latlng[1]}">
+    <name><![CDATA[${a.text || ('标注'+(i+1))}]]></name>
+    <desc><![CDATA[idx:${a.idx}]]></desc>
+    ${(elev && Number.isFinite(a.idx) && elev[a.idx] != null) ? `<ele>${elev[a.idx]}</ele>` : ''}
+  </wpt>`).join('');
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="route_stitch_tool" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata><name><![CDATA[${name}]]></name></metadata>${wpts}
+  <trk>
+    <name><![CDATA[${name}]]></name>
+    <trkseg>${trkseg}</trkseg>
+  </trk>
+</gpx>`;
+}
+
+function normalizeElevationForExport(routePts, eleArr) {
+  if (!Array.isArray(routePts) || routePts.length === 0 || !Array.isArray(eleArr)) return null;
+  const out = eleArr.slice(0, routePts.length).map((v) => (Number.isFinite(v) ? Number(v) : null));
+  while (out.length < routePts.length) out.push(null);
+
+  const known = [];
+  for (let i = 0; i < out.length; i++) {
+    if (out[i] != null) known.push(i);
+  }
+  if (known.length === 0) return null;
+
+  const first = known[0];
+  for (let i = 0; i < first; i++) out[i] = out[first];
+  let last = first;
+  for (let k = 1; k < known.length; k++) {
+    const cur = known[k];
+    const v0 = out[last], v1 = out[cur];
+    for (let i = last + 1; i < cur; i++) {
+      const t = (i - last) / (cur - last);
+      out[i] = v0 + (v1 - v0) * t;
+    }
+    last = cur;
+  }
+  for (let i = last + 1; i < out.length; i++) out[i] = out[last];
+  return out;
+}
+
+function serializeProject() {
+  return {
+    version: 1,
+    savedAt: new Date().toISOString(),
+    activeSource,
+    route,
+    ele,
+    breakpoints: [...breakpoints],
+    clips: clips.map(c => ({
+      trackId: c.trackId,
+      trackName: c.trackName,
+      a: c.a,
+      b: c.b,
+      reverse: !!c.reverse,
+      points: c.points,
+      ele: c.ele,
+      dist: c.dist
+    })),
+    annotations: annos.map(a => ({
+      idx: a.idx,
+      text: a.text,
+      type: a.type || 'note',
+      color: a.color || '#111827',
+      latlng: a.latlng,
+      labelOffset: a.labelOffset || [0, -10],
+      labelLatLng: a.labelLatLng || null
+    })),
+    tracks: tracks.map(t => ({
+      id: t.id,
+      name: t.name,
+      route: t.route,
+      ele: t.ele,
+      color: t.color
+    }))
+  };
+}
+
+function restoreProject(obj) {
+  if (!obj || !Array.isArray(obj.route) || obj.route.length < 2) {
+    throw new Error('工程文件无效：缺少轨迹');
+  }
+
+  importedLayer.clearLayers();
+  tracks.length = 0;
+
+  (obj.tracks || []).forEach((t, i) => {
+    if (!Array.isArray(t.route) || t.route.length < 2) return;
+    const pref = computePrefix(t.route, t.ele || []);
+    const color = t.color || palette[i % palette.length];
+    const layer = L.polyline(t.route, {color, weight:2, opacity:0.8}).addTo(importedLayer);
+    tracks.push({
+      id: t.id || crypto.randomUUID(),
+      name: t.name || `轨迹${i+1}`,
+      route: t.route,
+      ele: t.ele || new Array(t.route.length).fill(null),
+      prefDist: pref.prefDist,
+      prefUp: pref.prefUp,
+      prefDown: pref.prefDown,
+      color,
+      layer
+    });
+  });
+
+  route = obj.route;
+  ele = obj.ele || new Array(route.length).fill(null);
+  const pref = computePrefix(route, ele);
+  prefDist = pref.prefDist;
+  prefUp = pref.prefUp;
+  prefDown = pref.prefDown;
+  activeSource = obj.activeSource || '加载工程轨迹';
+  activeTrackId = null;
+  breakpoints.length = 0;
+  (obj.breakpoints || []).forEach((i) => {
+    if (Number.isInteger(i)) breakpoints.push(i);
+  });
+
+  clips.length = 0;
+  (obj.clips || []).forEach(c => clips.push(c));
+
+  redrawActiveRoute();
+
+  annos.length = 0;
+  (obj.annotations || []).forEach(a => {
+    if (!Array.isArray(a.latlng) || a.latlng.length < 2) return;
+    annos.push({
+      idx: a.idx ?? 0,
+      text: a.text || '',
+      type: a.type || 'note',
+      color: a.color || '#111827',
+      latlng: a.latlng,
+      labelOffset: Array.isArray(a.labelOffset) ? a.labelOffset : [0, -10],
+      labelLatLng: Array.isArray(a.labelLatLng) ? a.labelLatLng : null,
+      marker: null,
+      labelMarker: null
+    });
+  });
+  refreshAnnoMarkers();
+
+  renderTrackList();
+  renderClipList();
+  renderAnnoList();
+  renderBreakpointAnalysis();
+}
+
+const map = L.map('map');
+const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom:19, attribution:'Tiles &copy; Esri'}).addTo(map);
+const topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {maxZoom:17, attribution:'&copy; OpenTopoMap'});
+const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19, attribution:'&copy; OpenStreetMap'});
+const hill = L.tileLayer('https://tiles.wmflabs.org/hillshading/{z}/{x}/{y}.png', {maxZoom:15, opacity:0.55, attribution:'&copy; Wikimedia hillshading'}).addTo(map);
+
+const activeLayer = L.layerGroup().addTo(map);
+const segmentLayer = L.layerGroup().addTo(map);
+const importedLayer = L.layerGroup().addTo(map);
+const annoLayer = L.layerGroup().addTo(map);
+const bpLayer = L.layerGroup().addTo(map);
+
+L.control.layers({'卫星图':sat, '地形图':topo, '街道图':osm}, {'阴影地形':hill, '当前轨迹':activeLayer, '当前截取段':segmentLayer, '导入轨迹':importedLayer, '标注':annoLayer, '断点':bpLayer}, {collapsed:false}).addTo(map);
+
+let baseLine = null, segLine = null, startMarker = null, endMarker = null;
+let bpPreviewMarker = null;
+
+function hav(lat1, lon1, lat2, lon2) {
+  const R = 6371008.8;
+  const toRad = Math.PI / 180;
+  const p1 = lat1 * toRad, p2 = lat2 * toRad;
+  const dlat = (lat2 - lat1) * toRad;
+  const dlon = (lon2 - lon1) * toRad;
+  const a = Math.sin(dlat/2)**2 + Math.cos(p1)*Math.cos(p2)*Math.sin(dlon/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function computePrefix(routePts, eleArr) {
+  const pd=[0];
+  for (let i=1;i<routePts.length;i++) pd.push(pd[pd.length-1] + hav(routePts[i-1][0],routePts[i-1][1],routePts[i][0],routePts[i][1]));
+  const filled = normalizeElevationForExport(routePts, eleArr);
+  const raw = filled ? filled : eleArr.map(v => Number.isFinite(v) ? Number(v) : 0);
+  const w = Math.max(1, Math.min(25, Math.round(elevSmoothWindow) || 5));
+  const oddW = w % 2 === 0 ? w + 1 : w;
+  const h=Math.floor(oddW/2);
+  const sm=[];
+  for (let i=0;i<raw.length;i++) {
+    const a=Math.max(0,i-h), b=Math.min(raw.length,i+h+1);
+    let s=0; for (let j=a;j<b;j++) s+=raw[j];
+    sm.push(s/(b-a));
+  }
+  const series = elevCalcMode === 'raw' ? raw : sm;
+  const threshold = elevCalcMode === 'smooth_threshold' ? Math.max(0, Number(elevThreshold) || 0) : 0;
+  const pu=[0], pdown=[0];
+  for (let i=1;i<series.length;i++) {
+    const de=series[i]-series[i-1];
+    let u=pu[pu.length-1], d=pdown[pdown.length-1];
+    if (Math.abs(de)>=threshold) { if (de>0) u+=de; else d+=-de; }
+    pu.push(u); pdown.push(d);
+  }
+  return {prefDist:pd, prefUp:pu, prefDown:pdown, elevFilled: filled};
+}
+
+function updateStats() {
+  $('sourceName').textContent = activeSource;
+  syncAnalysisTargetUI();
+  renderBreakpointAnalysis();
+  if (!route || route.length < 2) {
+    $('totalPts').textContent = '0';
+    $('totalDist').textContent = '-';
+    $('totalUp').textContent = '-';
+    $('totalDown').textContent = '-';
+    $('methodText').textContent = '请先导入轨迹，再进行截取/拼接/标注';
+    return;
+  }
+  const max = route.length - 1;
+  $('totalPts').textContent = route.length;
+  $('totalDist').textContent = (prefDist[max]/1000).toFixed(2) + ' km';
+  $('totalUp').textContent = prefUp[max].toFixed(0) + ' m';
+  $('totalDown').textContent = prefDown[max].toFixed(0) + ' m';
+  const sw = Math.max(1, Math.min(25, Math.round(elevSmoothWindow) || 5));
+  const modeText = elevCalcMode === 'raw'
+    ? '原始累计'
+    : (elevCalcMode === 'smooth' ? `平滑累计（窗口${sw}）` : `平滑+阈值累计（窗口${sw}，阈值${Number(elevThreshold).toFixed(1)}m）`);
+  $('methodText').textContent = `爬升算法：${modeText}`;
+}
+
+
+
+function redrawActiveRoute() {
+  activeLayer.clearLayers();
+  segmentLayer.clearLayers();
+  annoLayer.clearLayers();
+  annos.length = 0;
+  renderAnnoList();
+
+  if (!route || route.length < 2) {
+    baseLine = null;
+    segLine = L.polyline([], {color:'#e53935', weight:4, opacity:0.95}).addTo(segmentLayer);
+    startMarker = null;
+    endMarker = null;
+    $('startRange').max = 1; $('endRange').max = 1;
+    $('startRange').value = 0; $('endRange').value = 1;
+    $('startIdx').textContent = '-';
+    $('endIdx').textContent = '-';
+    $('segDist').textContent = '-';
+    $('segUp').textContent = '-';
+    $('segDown').textContent = '-';
+    $('segDirection').textContent = '-';
+    renderLiveProfile(0, 1);
+    updateStats();
+    return;
+  }
+
+  baseLine = L.polyline(route, {color:'#ffcc00', weight:3, opacity:0.85}).addTo(activeLayer);
+  segLine = L.polyline([], {color:'#e53935', weight:4, opacity:0.95}).addTo(segmentLayer);
+  startMarker = L.circleMarker(route[0], {radius:6, color:'#2e7d32', fillColor:'#2e7d32', fillOpacity:1}).addTo(segmentLayer);
+  endMarker = L.circleMarker(route[route.length-1], {radius:6, color:'#6a1b9a', fillColor:'#6a1b9a', fillOpacity:1}).addTo(segmentLayer);
+
+  map.fitBounds(baseLine.getBounds(), {padding:[20,20]});
+
+  const max = route.length - 1;
+  $('startRange').max = max; $('endRange').max = max;
+  $('startRange').value = Math.floor(max*0.2);
+  $('endRange').value = Math.floor(max*0.8);
+  updateSegment();
+  renderLiveProfile(Number($('startRange').value), Number($('endRange').value));
+  updateStats();
+}
+
+function segStats(i,j) {
+  const a=Math.min(i,j), b=Math.max(i,j);
+  return {a,b, dist:prefDist[b]-prefDist[a], up:prefUp[b]-prefUp[a], down:prefDown[b]-prefDown[a]};
+}
+
+function renderBreakpointMarkers(previewIdx = null) {
+  bpLayer.clearLayers();
+  if (!route || route.length < 2) return;
+
+  const sorted = [...breakpoints].sort((a, b) => a - b);
+  sorted.forEach((idx, i) => {
+    const p = route[idx];
+    if (!p) return;
+    const marker = L.circleMarker(p, {
+      radius: 6,
+      color: '#0f766e',
+      fillColor: '#14b8a6',
+      fillOpacity: 0.95,
+      weight: 2
+    }).addTo(bpLayer);
+    marker.bindTooltip(`断点${i + 1} @${idx}`, {direction:'top', offset:[0, -8]});
+  });
+
+  if (Number.isInteger(previewIdx) && previewIdx >= 1 && previewIdx <= route.length - 2) {
+    const p = route[previewIdx];
+    if (p) {
+      bpPreviewMarker = L.circleMarker(p, {
+        radius: 8,
+        color: '#a16207',
+        fillColor: '#fbbf24',
+        fillOpacity: 0.9,
+        weight: 2,
+        dashArray: '4,3'
+      }).addTo(bpLayer);
+      bpPreviewMarker.bindTooltip(`预览断点 @${previewIdx}`, {direction:'top', offset:[0, -10], permanent: true});
+    }
+  } else {
+    bpPreviewMarker = null;
+  }
+}
+
+function normalizeBreakpoints() {
+  if (!route || route.length < 3) {
+    breakpoints.length = 0;
+    return;
+  }
+  const maxInner = route.length - 2;
+  const uniq = Array.from(new Set(
+    breakpoints
+      .map(x => Number(x))
+      .filter(x => Number.isFinite(x))
+      .map(x => Math.round(x))
+      .filter(x => x >= 1 && x <= maxInner)
+  )).sort((a, b) => a - b);
+  breakpoints.length = 0;
+  breakpoints.push(...uniq);
+}
+
+function renderBreakpointAnalysis() {
+  const bpList = $('bpList');
+  const tbody = $('bpSegTbody');
+  const range = $('bpIndexRange');
+  const val = $('bpIndexValue');
+  if (!bpList || !tbody || !range || !val) return;
+
+  if (!route || route.length < 2) {
+    bpList.textContent = '暂无可分析轨迹';
+    tbody.innerHTML = '';
+    range.min = 1; range.max = 1; range.value = 1;
+    val.textContent = '-';
+    return;
+  }
+
+  const max = route.length - 1;
+  range.min = 1;
+  range.max = Math.max(1, max - 1);
+  if (Number(range.value) < 1 || Number(range.value) > Number(range.max)) {
+    range.value = Math.max(1, Math.floor(max / 2));
+  }
+  val.textContent = `${range.value} / ${max}`;
+
+  normalizeBreakpoints();
+  bpList.innerHTML = '';
+  if (!breakpoints.length) {
+    bpList.textContent = '未设置断点（当前仅1段）';
+  } else {
+    breakpoints.forEach((b) => {
+      const chip = document.createElement('span');
+      chip.className = 'bp-chip';
+      chip.innerHTML = `断点@${b}`;
+      const btn = document.createElement('button');
+      btn.textContent = '删除';
+      btn.onclick = () => {
+        const idx = breakpoints.indexOf(b);
+        if (idx >= 0) breakpoints.splice(idx, 1);
+        renderBreakpointAnalysis();
+      };
+      chip.appendChild(btn);
+      bpList.appendChild(chip);
+    });
+  }
+
+  const bounds = [0, ...breakpoints, max];
+  tbody.innerHTML = '';
+  for (let i = 0; i < bounds.length - 1; i++) {
+    const a = bounds[i], b = bounds[i + 1];
+    const st = segStats(a, b);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${i + 1}</td><td>${a} - ${b}</td><td>${(st.dist/1000).toFixed(2)} km</td><td>${st.up.toFixed(0)} m</td><td>${st.down.toFixed(0)} m</td>`;
+    tbody.appendChild(tr);
+  }
+  renderBreakpointMarkers();
+}
+
+function updateSegment() {
+  if (!route || route.length < 2 || !segLine) return;
+  const max = route.length - 1;
+  let i = Number($('startRange').value), j = Number($('endRange').value);
+  if (i===j) { if (j<max) j++; else i--; }
+  $('startRange').value=i; $('endRange').value=j;
+  $('startIdx').textContent=i; $('endIdx').textContent=j;
+
+  const a = Math.min(i, j), b = Math.max(i, j);
+  let segPts = route.slice(a, b + 1);
+  const reversed = i > j;
+  if (reversed) segPts = segPts.reverse();
+
+  segLine.setLatLngs(segPts);
+  startMarker.setLatLng(route[i]);
+  endMarker.setLatLng(route[j]);
+
+  const st = segStats(i,j);
+  $('segDist').textContent=(st.dist/1000).toFixed(2)+' km';
+  $('segUp').textContent=st.up.toFixed(0)+' m';
+  $('segDown').textContent=st.down.toFixed(0)+' m';
+  $('segDirection').textContent = reversed ? '反穿（终点→起点）' : '正向（起点→终点）';
+  renderLiveProfile(i, j);
+}
+$('startRange').addEventListener('input', updateSegment);
+$('endRange').addEventListener('input', updateSegment);
+
+function nearestIdx(latlng, arrRoute=route) {
+  let best=0, min=Infinity;
+  for (let i=0;i<arrRoute.length;i++) {
+    const p=arrRoute[i];
+    const d=(p[0]-latlng.lat)**2 + (p[1]-latlng.lng)**2;
+    if (d<min) { min=d; best=i; }
+  }
+  return best;
+}
+
+function renderLiveProfile(startIdx, endIdx) {
+  const c = $('liveProfileCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  const W = c.width, H = c.height;
+  ctx.clearRect(0, 0, W, H);
+
+  if (!route || route.length < 2 || !prefDist || prefDist.length !== route.length) {
+    ctx.fillStyle = '#666';
+    ctx.font = '13px sans-serif';
+    ctx.fillText('请先导入轨迹', 16, 26);
+    return;
+  }
+
+  const elev = normalizeElevationForExport(route, ele);
+  if (!elev) {
+    ctx.fillStyle = '#666';
+    ctx.font = '13px sans-serif';
+    ctx.fillText('轨迹缺少海拔数据', 16, 26);
+    return;
+  }
+
+  const padL = 44, padR = 12, padT = 10, padB = 28;
+  const x0 = padL, y0 = H - padB, x1 = W - padR, y1 = padT;
+  const pw = x1 - x0, ph = y0 - y1;
+  const total = Math.max(1, prefDist[prefDist.length - 1]);
+  const minE = Math.min(...elev), maxE = Math.max(...elev);
+  const span = Math.max(1, maxE - minE);
+  const eMin = minE - span * 0.05, eMax = maxE + span * 0.05;
+  const eSpan = Math.max(1, eMax - eMin);
+  const xOf = (d) => x0 + (d / total) * pw;
+  const yOf = (e) => y0 - ((e - eMin) / eSpan) * ph;
+
+  // grid
+  ctx.strokeStyle = '#eceff1';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = y1 + (ph * i) / 4;
+    ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+  }
+  ctx.fillStyle = '#64748b';
+  ctx.font = '11px sans-serif';
+  for (let i = 0; i <= 4; i++) {
+    const y = y1 + (ph * i) / 4;
+    const v = eMax - (eSpan * i) / 4;
+    ctx.fillText(`${Math.round(v)}m`, 6, y + 4);
+  }
+
+  // profile
+  ctx.beginPath();
+  for (let i = 0; i < elev.length; i++) {
+    const x = xOf(prefDist[i]), y = yOf(elev[i]);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // start/end markers on profile
+  const si = Math.max(0, Math.min(route.length - 1, Number(startIdx)));
+  const ei = Math.max(0, Math.min(route.length - 1, Number(endIdx)));
+  const sx = xOf(prefDist[si]), sy = yOf(elev[si]);
+  const ex = xOf(prefDist[ei]), ey = yOf(elev[ei]);
+
+  ctx.strokeStyle = 'rgba(34,197,94,0.55)';
+  ctx.beginPath(); ctx.moveTo(sx, y0); ctx.lineTo(sx, sy); ctx.stroke();
+  ctx.fillStyle = '#16a34a';
+  ctx.beginPath(); ctx.arc(sx, sy, 4.5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#166534';
+  ctx.fillText(`起 ${Math.round(elev[si])}m`, Math.min(x1 - 74, sx + 6), Math.max(y1 + 12, sy - 8));
+
+  ctx.strokeStyle = 'rgba(220,38,38,0.55)';
+  ctx.beginPath(); ctx.moveTo(ex, y0); ctx.lineTo(ex, ey); ctx.stroke();
+  ctx.fillStyle = '#dc2626';
+  ctx.beginPath(); ctx.arc(ex, ey, 4.5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#991b1b';
+  ctx.fillText(`终 ${Math.round(elev[ei])}m`, Math.min(x1 - 74, ex + 6), Math.max(y1 + 12, ey - 8));
+
+  // axis labels
+  ctx.fillStyle = '#475569';
+  ctx.font = '11px sans-serif';
+  ctx.fillText('0km', x0 - 8, y0 + 16);
+  ctx.fillText((total / 1000).toFixed(1) + 'km', x1 - 32, y0 + 16);
+  ctx.fillText('海拔(m)', 6, y1 - 2);
+}
+
+function refreshAnnoMarkers() {
+  annoLayer.clearLayers();
+  annos.forEach((a) => {
+    if (!Array.isArray(a.latlng) || a.latlng.length < 2) return;
+    const color = a.color || '#111827';
+    const marker = L.circleMarker(a.latlng, {
+      radius: 7,
+      color,
+      fillColor: color,
+      fillOpacity: 0.95,
+      weight: 2
+    }).addTo(annoLayer);
+    marker.bindPopup(`<b>${a.type || '标注'}</b><br/>索引:${a.idx}<br/>${a.text || ''}`);
+    a.marker = marker;
+
+    const labelPos = (Array.isArray(a.labelLatLng) && a.labelLatLng.length === 2) ? a.labelLatLng : a.latlng;
+    const labelIcon = L.divIcon({
+      className: 'anno-label-wrap',
+      html: `<div class="anno-label">${a.text || ''}</div>`,
+      iconSize: null
+    });
+    const labelMarker = L.marker(labelPos, {icon: labelIcon, draggable: true}).addTo(annoLayer);
+    labelMarker.on('dragend', () => {
+      const p = labelMarker.getLatLng();
+      a.labelLatLng = [p.lat, p.lng];
+    });
+    labelMarker.on('click', () => marker.openPopup());
+    a.labelMarker = labelMarker;
+  });
+}
+
+function renderTrackList() {
+  const ul = $('trackList'); ul.innerHTML='';
+  tracks.forEach((t) => {
+    const li = document.createElement('li');
+    const activeTag = activeTrackId === t.id ? ' <b style="color:#2563eb">[当前分析]</b>' : '';
+    li.innerHTML = `<span class='t' style='color:${t.color}'>${t.name} (${t.route.length}点)${activeTag}</span>`;
+    const useBtn = document.createElement('button'); useBtn.textContent='设为分析轨迹';
+    useBtn.onclick = () => {
+      applyTrackAsActive(t);
+      redrawActiveRoute();
+      renderTrackList();
+    };
+    const delBtn = document.createElement('button'); delBtn.textContent='移除';
+    delBtn.onclick = () => {
+      importedLayer.removeLayer(t.layer);
+      const idx = tracks.findIndex(x => x.id===t.id);
+      if (idx>=0) tracks.splice(idx,1);
+      if (activeTrackId === t.id) activeTrackId = null;
+      renderTrackList();
+      updateStats();
+    };
+    li.appendChild(useBtn); li.appendChild(delBtn); ul.appendChild(li);
+  });
+}
+
+function parseKmlText(text, name) {
+  const xml = new DOMParser().parseFromString(text, 'text/xml');
+  const route = [];
+  const ele = [];
+
+  // 1) 优先收集所有 LineString 坐标（兼容多段轨迹）
+  const lineNodes = Array.from(xml.querySelectorAll('LineString coordinates'));
+  lineNodes.forEach((node) => {
+    const raw = (node.textContent || '').trim();
+    if (!raw) return;
+    raw.split(/\s+/).forEach((tok) => {
+      const p = tok.split(',');
+      if (p.length >= 2) {
+        const lat = Number(p[1]);
+        const lon = Number(p[0]);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+        route.push([lat, lon]);
+        ele.push(p.length >= 3 && Number.isFinite(Number(p[2])) ? Number(p[2]) : null);
+      }
+    });
+  });
+
+  // 2) 若没有 LineString，则尝试 gx:Track/gx:coord
+  if (route.length < 2) {
+    const coordNodes = Array.from(xml.querySelectorAll('gx\\:Track gx\\:coord, Track coord, coord'));
+    coordNodes.forEach((node) => {
+      const raw = (node.textContent || '').trim();
+      if (!raw) return;
+      const p = raw.split(/\s+/);
+      if (p.length >= 2) {
+        const lon = Number(p[0]);
+        const lat = Number(p[1]);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+        route.push([lat, lon]);
+        ele.push(p.length >= 3 && Number.isFinite(Number(p[2])) ? Number(p[2]) : null);
+      }
+    });
+  }
+
+  // 去掉连续重复点
+  const cleanRoute = [];
+  const cleanEle = [];
+  for (let i = 0; i < route.length; i++) {
+    const cur = route[i];
+    const last = cleanRoute[cleanRoute.length - 1];
+    if (!last || cur[0] !== last[0] || cur[1] !== last[1]) {
+      cleanRoute.push(cur);
+      cleanEle.push(ele[i]);
+    }
+  }
+
+  if (cleanRoute.length < 2) throw new Error(name + ' 无有效轨迹（可能只有点标注）');
+  return {name, route: cleanRoute, ele: cleanEle};
+}
+
+function parseGpxText(text, name) {
+  const xml = new DOMParser().parseFromString(text, 'text/xml');
+  const pts = xml.querySelectorAll('trkpt');
+  const route=[], ele=[];
+  pts.forEach(p => {
+    const lat = Number(p.getAttribute('lat')), lon = Number(p.getAttribute('lon'));
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+    route.push([lat, lon]);
+    const e = p.querySelector('ele');
+    ele.push(e ? Number(e.textContent) : null);
+  });
+  if (route.length<2) throw new Error(name+' 无有效坐标');
+  return {name, route, ele};
+}
+
+async function parseFile(file) {
+  const name = file.name;
+  if (name.toLowerCase().endsWith('.kmz')) {
+    const buf = await file.arrayBuffer();
+    const zip = await JSZip.loadAsync(buf);
+    let kmlEntry = null;
+    zip.forEach((_, e) => { if (!kmlEntry && e.name.toLowerCase().endsWith('.kml')) kmlEntry = e; });
+    if (!kmlEntry) throw new Error(name+' 未找到kml');
+    const text = await kmlEntry.async('text');
+    return parseKmlText(text, name);
+  }
+  const text = await file.text();
+  if (name.toLowerCase().endsWith('.gpx')) return parseGpxText(text, name);
+  return parseKmlText(text, name);
+}
+
+$('trackInput').addEventListener('change', async (e) => {
+  const files = [...(e.target.files||[])];
+  for (const f of files) {
+    try {
+      const parsed = await parseFile(f);
+      const pref = computePrefix(parsed.route, parsed.ele);
+      const color = palette[tracks.length % palette.length];
+      const layer = L.polyline(parsed.route, {color, weight:2, opacity:0.8}).addTo(importedLayer);
+      tracks.push({id: crypto.randomUUID(), name: parsed.name, route: parsed.route, ele: parsed.ele, prefDist: pref.prefDist, prefUp: pref.prefUp, prefDown: pref.prefDown, color, layer});
+    } catch (err) {
+      alert('导入失败: ' + (err.message || err));
+    }
+  }
+  renderTrackList();
+  if ((!route || route.length < 2) && tracks.length > 0) {
+    const t = tracks[0];
+    applyTrackAsActive(t);
+    redrawActiveRoute();
+    renderTrackList();
+  }
+});
+
+// 片段篮子
+function renderClipList() {
+  const ul=$('clipList'); ul.innerHTML='';
+  let totalGap=0;
+  clips.forEach((c, i) => {
+    const li=document.createElement('li');
+    const km=(c.dist/1000).toFixed(2);
+    li.innerHTML=`<span class='t'>${i+1}. ${c.trackName} [${c.a}-${c.b}] ${c.reverse?'(反向)':''} ${km}km</span>`;
+    const upBtn=document.createElement('button'); upBtn.textContent='上移';
+    upBtn.onclick=()=>{ if(i>0){ [clips[i-1],clips[i]]=[clips[i],clips[i-1]]; renderClipList(); } };
+    const downBtn=document.createElement('button'); downBtn.textContent='下移';
+    downBtn.onclick=()=>{ if(i<clips.length-1){ [clips[i+1],clips[i]]=[clips[i],clips[i+1]]; renderClipList(); } };
+    const revBtn=document.createElement('button'); revBtn.textContent='反向';
+    revBtn.onclick=()=>{ c.reverse=!c.reverse; renderClipList(); };
+    const delBtn=document.createElement('button'); delBtn.textContent='删除';
+    delBtn.onclick=()=>{ clips.splice(i,1); renderClipList(); };
+    li.append(upBtn,downBtn,revBtn,delBtn);
+    ul.appendChild(li);
+
+    if (i>0) {
+      const prev=clips[i-1];
+      const pLast = prev.reverse ? prev.points[0] : prev.points[prev.points.length-1];
+      const cFirst = c.reverse ? c.points[c.points.length-1] : c.points[0];
+      totalGap += hav(pLast[0],pLast[1],cFirst[0],cFirst[1]);
+    }
+  });
+  $('gapWarning').textContent = clips.length>1 ? `片段衔接直线跳跃累计约 ${(totalGap/1000).toFixed(2)} km` : '';
+}
+
+$('addClipBtn').onclick = () => {
+  if (!route || route.length < 2) return;
+  const i=Number($('startRange').value), j=Number($('endRange').value);
+  const st=segStats(i,j);
+  const a=st.a, b=st.b;
+  const points = route.slice(a,b+1);
+  const eles = ele.slice(a,b+1);
+  const reverse = i > j;
+  clips.push({trackId:activeTrackId || 'base', trackName:activeSource, a, b, reverse, points, ele:eles, dist:st.dist});
+  renderClipList();
+};
+
+$('clearClipBtn').onclick = () => { clips.length=0; renderClipList(); };
+
+$('buildBtn').onclick = () => {
+  if (!clips.length) { alert('请先把片段加入拼接篮子'); return; }
+  const mergedRoute=[]; const mergedEle=[];
+  clips.forEach((c, idx) => {
+    const pts = c.reverse ? [...c.points].reverse() : c.points;
+    const els = c.reverse ? [...c.ele].reverse() : c.ele;
+    if (!pts.length) return;
+    if (idx===0) {
+      mergedRoute.push(...pts);
+      mergedEle.push(...els);
+    } else {
+      // 避免重复拼接首点
+      mergedRoute.push(...pts.slice(1));
+      mergedEle.push(...els.slice(1));
+    }
+  });
+  if (mergedRoute.length < 2) { alert('拼接后轨迹点不足'); return; }
+
+  const pref = computePrefix(mergedRoute, mergedEle);
+  route = mergedRoute;
+  ele = pref.elevFilled ? pref.elevFilled : mergedEle;
+  prefDist = pref.prefDist;
+  prefUp = pref.prefUp;
+  prefDown = pref.prefDown;
+  activeSource = `拼接轨迹(${clips.length}段)`;
+  activeTrackId = null;
+  redrawActiveRoute();
+  renderTrackList();
+  alert('拼接轨迹已生成，已切换为当前分析轨迹。');
+};
+
+// 地图选段
+let pickMode=false, pickCount=0;
+$('pickBtn').onclick = () => {
+  pickMode=true; pickCount=0;
+  $('pickBtn').textContent='点击地图选起点';
+};
+
+map.on('click', (e) => {
+  if (pickMode) {
+    const idx = nearestIdx(e.latlng, route);
+    if (pickCount===0) {
+      $('startRange').value=idx; pickCount=1; $('pickBtn').textContent='点击地图选终点';
+    } else {
+      $('endRange').value=idx; pickMode=false; pickCount=0; $('pickBtn').textContent='地图选起终点（可反穿）';
+    }
+    updateSegment();
+    return;
+  }
+  if (annoMode && route && route.length >= 2) addAnno(e.latlng);
+});
+
+// 标注
+let annoMode=false;
+$('addAnnoBtn').onclick = () => {
+  annoMode=!annoMode;
+  $('addAnnoBtn').textContent = annoMode ? '点击地图添加中' : '添加标注';
+};
+
+function renderAnnoList() {
+  const ul = $('annoList'); ul.innerHTML='';
+  annos.forEach((a, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<span class='t'>#${i+1} [${a.idx}] <span style="color:${a.color || '#111827'}">●</span> ${a.text}</span>`;
+    const fly=document.createElement('button'); fly.textContent='定位'; fly.onclick=()=>{ map.setView(a.latlng,16); if (a.marker) a.marker.openPopup(); };
+    const left=document.createElement('button'); left.textContent='←'; left.onclick=()=>adjustAnnoOffset(i,-8,0);
+    const right=document.createElement('button'); right.textContent='→'; right.onclick=()=>adjustAnnoOffset(i,8,0);
+    const up=document.createElement('button'); up.textContent='↑'; up.onclick=()=>adjustAnnoOffset(i,0,-8);
+    const down=document.createElement('button'); down.textContent='↓'; down.onclick=()=>adjustAnnoOffset(i,0,8);
+    const del=document.createElement('button'); del.textContent='删除'; del.onclick=()=>{ annos.splice(i,1); refreshAnnoMarkers(); renderAnnoList(); };
+    li.append(fly,left,right,up,down,del); ul.appendChild(li);
+  });
+}
+
+function adjustAnnoOffset(idx, dx, dy) {
+  const a = annos[idx];
+  if (!a) return;
+  const base = (Array.isArray(a.labelLatLng) && a.labelLatLng.length === 2) ? a.labelLatLng : a.latlng;
+  if (!Array.isArray(base) || base.length < 2) return;
+  const p = map.latLngToContainerPoint([base[0], base[1]]);
+  const p2 = L.point(p.x + dx, p.y + dy);
+  const ll = map.containerPointToLatLng(p2);
+  a.labelLatLng = [ll.lat, ll.lng];
+  refreshAnnoMarkers();
+  renderAnnoList();
+}
+
+function addAnno(latlng) {
+  const idx = nearestIdx(latlng, route);
+  const pt = route[idx];
+  const typeRaw = $('annoType') ? $('annoType').value : 'note|#111827';
+  const [annoType, annoColor] = typeRaw.split('|');
+  const txt = prompt('输入标注内容：', `标注@${idx}`);
+  if (!txt || !txt.trim()) return;
+  annos.push({
+    idx,
+    text: txt.trim(),
+    type: annoType || 'note',
+    color: annoColor || '#111827',
+    latlng: pt,
+    labelOffset: [0, -10],
+    labelLatLng: pt,
+    marker: null,
+    labelMarker: null
+  });
+  refreshAnnoMarkers();
+  renderAnnoList();
+}
+
+$('clearAnnoBtn').onclick = () => {
+  annos.length=0; refreshAnnoMarkers(); renderAnnoList();
+};
+
+$('bpIndexRange').addEventListener('input', () => {
+  const max = route && route.length ? route.length - 1 : 0;
+  const idx = Number($('bpIndexRange').value);
+  $('bpIndexValue').textContent = `${idx} / ${max > 0 ? max : '-'}`;
+  renderBreakpointMarkers(idx);
+});
+
+$('addBpBtn').onclick = () => {
+  if (!route || route.length < 3) {
+    alert('轨迹点不足，无法添加断点');
+    return;
+  }
+  const idx = Number($('bpIndexRange').value);
+  breakpoints.push(idx);
+  renderBreakpointAnalysis();
+  renderBreakpointMarkers(idx);
+};
+
+$('clearBpBtn').onclick = () => {
+  breakpoints.length = 0;
+  renderBreakpointAnalysis();
+  renderBreakpointMarkers(Number($('bpIndexRange').value));
+};
+
+$('autoSplitBtn').onclick = () => {
+  if (!route || route.length < 3) {
+    alert('轨迹点不足，无法分段');
+    return;
+  }
+  const n = Math.round(Number($('splitCountInput').value));
+  const segN = Math.max(2, Math.min(20, Number.isFinite(n) ? n : 5));
+  $('splitCountInput').value = String(segN);
+  const max = route.length - 1;
+  breakpoints.length = 0;
+  for (let k = 1; k < segN; k++) {
+    breakpoints.push(Math.round((max * k) / segN));
+  }
+  renderBreakpointAnalysis();
+  renderBreakpointMarkers(Number($('bpIndexRange').value));
+};
+
+
+function exportElevationChartPng() {
+  if (!route || route.length < 2) {
+    alert('当前没有可分析轨迹');
+    return;
+  }
+  const elev = normalizeElevationForExport(route, ele);
+  if (!elev) {
+    alert('当前轨迹没有可用海拔数据');
+    return;
+  }
+  const dist = prefDist && prefDist.length === route.length ? prefDist : (() => {
+    const d = [0];
+    for (let i = 1; i < route.length; i++) {
+      d.push(d[d.length - 1] + hav(route[i - 1][0], route[i - 1][1], route[i][0], route[i][1]));
+    }
+    return d;
+  })();
+
+  const W = 2200, H = 1200;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, H);
+
+  const padL = 140, padR = 50, padT = 60, padB = 110;
+  const x0 = padL, y0 = H - padB, x1 = W - padR, y1 = padT;
+  const pw = x1 - x0, ph = y0 - y1;
+  const totalM = Math.max(1, dist[dist.length - 1]);
+  const minE = Math.min(...elev), maxE = Math.max(...elev);
+  const span = Math.max(1, maxE - minE);
+  const eMin = Math.floor((minE - span * 0.05) / 10) * 10;
+  const eMax = Math.ceil((maxE + span * 0.05) / 10) * 10;
+  const eSpan = Math.max(1, eMax - eMin);
+  const xOf = (m) => x0 + (m / totalM) * pw;
+  const yOf = (e) => y0 - ((e - eMin) / eSpan) * ph;
+
+  // grid
+  ctx.strokeStyle = '#e5e7eb';
+  ctx.lineWidth = 2;
+  for (let i = 0; i <= 6; i++) {
+    const y = y1 + (ph * i) / 6;
+    ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+  }
+  for (let i = 0; i <= 10; i++) {
+    const x = x0 + (pw * i) / 10;
+    ctx.beginPath(); ctx.moveTo(x, y1); ctx.lineTo(x, y0); ctx.stroke();
+  }
+
+  // axes
+  ctx.strokeStyle = '#111827';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(x0, y1); ctx.lineTo(x0, y0); ctx.lineTo(x1, y0); ctx.stroke();
+
+  // area
+  ctx.beginPath();
+  ctx.moveTo(xOf(dist[0]), y0);
+  for (let i = 0; i < elev.length; i++) ctx.lineTo(xOf(dist[i]), yOf(elev[i]));
+  ctx.lineTo(xOf(dist[elev.length - 1]), y0);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(59,130,246,0.18)';
+  ctx.fill();
+
+  // line
+  ctx.beginPath();
+  for (let i = 0; i < elev.length; i++) {
+    const x = xOf(dist[i]), y = yOf(elev[i]);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = '#1f2937';
+  ctx.lineWidth = 4;
+  ctx.stroke();
+
+  // labels
+  ctx.fillStyle = '#111827';
+  ctx.font = '30px sans-serif';
+  for (let i = 0; i <= 10; i++) {
+    const km = (totalM / 1000) * i / 10;
+    const x = x0 + (pw * i) / 10;
+    ctx.fillText(km.toFixed(1), x - 18, y0 + 42);
+  }
+  for (let i = 0; i <= 6; i++) {
+    const e = eMax - (eSpan * i) / 6;
+    const y = y1 + (ph * i) / 6;
+    ctx.fillText(String(Math.round(e)), 24, y + 10);
+  }
+  ctx.font = '36px sans-serif';
+  ctx.fillText('Distance (km)', x0 + pw / 2 - 95, H - 24);
+  ctx.save();
+  ctx.translate(42, y1 + ph / 2 + 60);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Elevation (m)', 0, 0);
+  ctx.restore();
+
+  // stats
+  const up = prefUp && prefUp.length ? prefUp[prefUp.length - 1] : 0;
+  const down = prefDown && prefDown.length ? prefDown[prefDown.length - 1] : 0;
+  ctx.font = '32px sans-serif';
+  ctx.fillText(`Dist ${(totalM/1000).toFixed(2)} km   Gain ${up.toFixed(0)} m   Loss ${down.toFixed(0)} m`, x0, 42);
+
+  const name = safeName(activeSource || 'route');
+  downloadPngFromCanvas(`${name}_elevation_profile.png`, c);
+}
+
+
+$('exportElevationBtn').onclick = () => {
+  exportElevationChartPng();
+};
+
+$('exportKmlBtn').onclick = () => {
+  if (!route || route.length < 2) {
+    alert('当前没有可导出的轨迹');
+    return;
+  }
+  const name = safeName(activeSource || 'route_export');
+  const kml = routeToKml(route, annos, name);
+  downloadText(`${name}.kml`, kml, 'application/vnd.google-earth.kml+xml;charset=utf-8');
+};
+
+$('exportGpxBtn').onclick = () => {
+  if (!route || route.length < 2) {
+    alert('当前没有可导出的轨迹');
+    return;
+  }
+  const name = safeName(activeSource || 'route_export');
+  const gpx = routeToGpx(route, annos, name);
+  downloadText(`${name}.gpx`, gpx, 'application/gpx+xml;charset=utf-8');
+};
+
+$('exportGeoBtn').onclick = () => {
+  if (!route || route.length < 2) {
+    alert('当前没有可导出的轨迹');
+    return;
+  }
+  const name = safeName(activeSource || 'route_export');
+  const geo = routeToGeoJSON(route, annos, name);
+  downloadText(`${name}.geojson`, geo, 'application/geo+json;charset=utf-8');
+};
+
+$('saveProjectBtn').onclick = () => {
+  const name = safeName(activeSource || 'route_project');
+  const project = serializeProject();
+  downloadText(`${name}.project.json`, JSON.stringify(project, null, 2), 'application/json;charset=utf-8');
+};
+
+$('loadProjectBtn').onclick = () => $('loadProjectInput').click();
+$('loadProjectInput').addEventListener('change', async (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  try {
+    const txt = await f.text();
+    const obj = JSON.parse(txt);
+    restoreProject(obj);
+    alert('工程已加载。');
+  } catch (err) {
+    alert('加载失败: ' + (err.message || err));
+  } finally {
+    e.target.value = '';
+  }
+});
+
+$('analysisTrackSelect').addEventListener('change', (e) => {
+  const v = e.target.value;
+  if (v === '__current__') {
+    activeTrackId = null;
+    updateStats();
+    renderTrackList();
+    return;
+  }
+  const t = tracks.find(x => x.id === v);
+  if (!t) return;
+  applyTrackAsActive(t);
+  redrawActiveRoute();
+  renderTrackList();
+});
+
+$('elevModeSelect').addEventListener('change', (e) => {
+  elevCalcMode = e.target.value || 'smooth_threshold';
+  refreshElevOptionUI();
+  recomputeByElevationOptions();
+});
+
+$('elevSmoothInput').addEventListener('change', (e) => {
+  const v = Math.round(Number(e.target.value));
+  elevSmoothWindow = Math.max(1, Math.min(25, Number.isFinite(v) ? v : 5));
+  e.target.value = String(elevSmoothWindow);
+  recomputeByElevationOptions();
+});
+
+$('elevThresholdInput').addEventListener('change', (e) => {
+  const v = Number(e.target.value);
+  elevThreshold = Math.max(0, Math.min(20, Number.isFinite(v) ? v : 1.0));
+  e.target.value = elevThreshold.toFixed(1);
+  recomputeByElevationOptions();
+});
+
+function setToolTab(mode) {
+  const stitch = mode === 'stitch';
+  $('tabStitch').classList.toggle('active', stitch);
+  $('tabAnalysis').classList.toggle('active', !stitch);
+  document.querySelectorAll('.tool-stitch').forEach((el) => {
+    el.style.display = stitch ? '' : 'none';
+  });
+  document.querySelectorAll('.tool-analysis').forEach((el) => {
+    el.style.display = stitch ? 'none' : '';
+  });
+}
+
+$('tabStitch').onclick = () => setToolTab('stitch');
+$('tabAnalysis').onclick = () => setToolTab('analysis');
+
+function refreshElevOptionUI() {
+  const mode = $('elevModeSelect') ? $('elevModeSelect').value : elevCalcMode;
+  const thInput = $('elevThresholdInput');
+  if (thInput) thInput.disabled = mode !== 'smooth_threshold';
+}
+
+function recomputeByElevationOptions() {
+  if (Array.isArray(route) && route.length >= 2) {
+    const pref = computePrefix(route, ele);
+    prefDist = pref.prefDist;
+    prefUp = pref.prefUp;
+    prefDown = pref.prefDown;
+  } else {
+    prefDist = [];
+    prefUp = [];
+    prefDown = [];
+  }
+  tracks.forEach((t) => {
+    const pref = computePrefix(t.route, t.ele || []);
+    t.prefDist = pref.prefDist;
+    t.prefUp = pref.prefUp;
+    t.prefDown = pref.prefDown;
+  });
+  redrawActiveRoute();
+  renderTrackList();
+}
+
+// 侧栏拖拽宽度
+(() => {
+  const app = $('app');
+  const bar = $('resizer');
+  let dragging = false;
+  bar.addEventListener('mousedown', () => { dragging = true; });
+  window.addEventListener('mouseup', () => { dragging = false; });
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const rect = app.getBoundingClientRect();
+    const w = Math.max(320, Math.min(820, e.clientX - rect.left));
+    app.style.gridTemplateColumns = `${w}px 6px 1fr`;
+  });
+})();
+
+// 初始化
+$('elevModeSelect').value = elevCalcMode;
+$('elevSmoothInput').value = String(elevSmoothWindow);
+$('elevThresholdInput').value = Number(elevThreshold).toFixed(1);
+refreshElevOptionUI();
+updateStats();
+renderTrackList();
+renderClipList();
+setToolTab('stitch');
+</script>
+</body>
+</html>
