@@ -1,3 +1,6 @@
 .DS_Store
 __pycache__/
 *.pyc
+
+# 仅维护者本地保留的部署说明，不提交到 GitHub
+DEPLOY.md
