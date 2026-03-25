@@ -35,17 +35,32 @@
 
 ## 仓库里有什么？
 
-就 **一个程序文件**：`Trace_planner.html`（另有 `LICENSE`）。  
-海拔剖面、实时高度图、导出爬升下降图 PNG 都在浏览器里完成，**不需要 Python**。
+- `Trace_planner.html`：主程序  
+- `index.html`：打开后跳转到主程序（方便网站根路径访问）  
+- `.github/workflows/pages.yml`：可选，用于 **GitHub Pages** 自动发布  
 
-如果你本地有很多 `KML/KMZ` 素材，建议把本仓库单独放在一个文件夹里（例如 `trace_planner/`），和轨迹、PPT、截图分开，互不干扰。
+海拔剖面、实时高度图、导出爬升下降图 PNG 都在浏览器里完成，**不需要服务器、不需要 Python**。
+
+如果你本地有很多 `KML/KMZ` 素材，建议把本仓库单独放在一个文件夹里（和轨迹、PPT、截图分开），互不干扰。
+
+---
+
+## 在线公开网站（GitHub Pages，免费）
+
+1. 把本仓库推到 GitHub（例如你已有的 `trace_planner` 仓库）。  
+2. 打开仓库 **Settings → Pages**。  
+3. **Build and deployment** 里 **Source** 选 **GitHub Actions**。  
+4. 推送一次 `main`（或手动运行 workflow），等待绿色勾完成。  
+5. 站点地址一般为：`https://<你的用户名>.github.io/<仓库名>/`（以 Pages 设置页显示为准）。
+
+**说明：** 页面是纯静态的；用户导入的轨迹、下载的工程 JSON、浏览器暂存都 **只发生在访问者自己的浏览器里**，不会上传到你的 GitHub 或任何自建服务器。
 
 ---
 
 ## 3 步快速上手
 
-1. 下载或克隆仓库  
-2. 双击打开 `Trace_planner.html`  
+1. 下载或克隆仓库，或直接用上面的在线地址  
+2. 打开 `Trace_planner.html`（或网站首页自动跳转）  
 3. 导入轨迹，开始拼接和分析
 
 > 纯前端，零依赖；想本地起一个静态服务也可以，不是必须。
@@ -57,7 +72,7 @@ cd <repo>
 python3 -m http.server 8000
 ```
 
-然后访问：`http://localhost:8000/Trace_planner.html`
+然后访问：`http://localhost:8000/Trace_planner.html` 或 `http://localhost:8000/`（会跳转）
 
 ---
 

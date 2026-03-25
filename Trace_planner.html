@@ -51,6 +51,12 @@
     }
     .profile-wrap { border: 1px solid #ddd; border-radius: 6px; background: #fff; padding: 6px; }
     #liveProfileCanvas { width: 100%; height: 170px; display: block; }
+    .project-drop {
+      margin-top: 8px; padding: 14px; border: 2px dashed #94a3b8; border-radius: 8px;
+      text-align: center; font-size: 13px; color: #64748b; background: #f8fafc;
+    }
+    .project-drop.drag { border-color: #2563eb; background: #eff6ff; color: #1e40af; }
+    .privacy-note { font-size: 11px; color: #64748b; margin-top: 6px; line-height: 1.4; }
   </style>
 </head>
 <body>
@@ -60,6 +66,22 @@
     <div class="tabs">
       <button id="tabStitch" class="tab-btn active">轨迹拼接工具</button>
       <button id="tabAnalysis" class="tab-btn">轨迹分析工具</button>
+    </div>
+
+    <div class="box tool-shared">
+      <div class="row"><b>工程 / 项目</b> <span class="hint">（无需登录）</span></div>
+      <div class="hint">下载 JSON 可换电脑打开；「本浏览器」仅本机暂存，清缓存会丢。</div>
+      <div class="btns">
+        <button id="saveProjectBtn" type="button">下载工程 JSON</button>
+        <button id="loadProjectBtn" type="button">打开工程 JSON</button>
+      </div>
+      <div class="btns">
+        <button id="saveLocalBtn" type="button">保存到本浏览器</button>
+        <button id="loadLocalBtn" type="button">从本浏览器读取</button>
+      </div>
+      <input id="loadProjectInput" type="file" accept=".json,application/json" style="display:none" />
+      <div id="projectDropZone" class="project-drop">或将 <code>.project.json</code> 拖到此处打开</div>
+      <div class="privacy-note">轨迹与工程数据只在你的浏览器里处理，本站不接收、不存储你的文件。</div>
     </div>
 
     <div class="box tool-stitch">
@@ -200,12 +222,7 @@
       <div class="btns">
         <button id="exportElevationBtn">导出爬升下降图PNG</button>
       </div>
-      <div class="btns">
-        <button id="saveProjectBtn">保存工程(JSON)</button>
-        <button id="loadProjectBtn">加载工程</button>
-        <input id="loadProjectInput" type="file" accept=".json" style="display:none" />
-      </div>
-      <div class="hint">工程会保存当前轨迹、导入轨迹、拼接篮子和标注。</div>
+      <div class="hint">工程请在上方「工程 / 项目」中下载或打开。</div>
     </div>
 
   </div>
@@ -237,6 +254,8 @@ const annos = [];
 const breakpoints = []; // 内部断点索引，不含0和末尾
 
 const $ = (id) => document.getElementById(id);
+const LS_PROJECT_KEY = 'trace_planner_project_v1';
+const LS_PROJECT_MAX_BYTES = 4 * 1024 * 1024;
 
 function applyTrackAsActive(t) {
   if (!t) return;
@@ -466,9 +485,15 @@ function normalizeElevationForExport(routePts, eleArr) {
 
 function serializeProject() {
   return {
-    version: 1,
+    version: 2,
     savedAt: new Date().toISOString(),
     activeSource,
+    activeTrackId,
+    elevSettings: {
+      mode: elevCalcMode,
+      smoothWindow: elevSmoothWindow,
+      threshold: elevThreshold
+    },
     route,
     ele,
     breakpoints: [...breakpoints],
@@ -501,10 +526,29 @@ function serializeProject() {
   };
 }
 
+function applyElevFromProject(obj) {
+  const es = obj && obj.elevSettings;
+  if (!es || typeof es !== 'object') return;
+  if (['raw', 'smooth', 'smooth_threshold'].includes(es.mode)) elevCalcMode = es.mode;
+  const sw = Math.round(Number(es.smoothWindow));
+  if (Number.isFinite(sw)) elevSmoothWindow = Math.max(1, Math.min(25, sw));
+  const th = Number(es.threshold);
+  if (Number.isFinite(th)) elevThreshold = Math.max(0, Math.min(20, th));
+}
+
+function syncElevControlsFromState() {
+  if ($('elevModeSelect')) $('elevModeSelect').value = elevCalcMode;
+  if ($('elevSmoothInput')) $('elevSmoothInput').value = String(elevSmoothWindow);
+  if ($('elevThresholdInput')) $('elevThresholdInput').value = Number(elevThreshold).toFixed(1);
+  refreshElevOptionUI();
+}
+
 function restoreProject(obj) {
   if (!obj || !Array.isArray(obj.route) || obj.route.length < 2) {
     throw new Error('工程文件无效：缺少轨迹');
   }
+
+  applyElevFromProject(obj);
 
   importedLayer.clearLayers();
   tracks.length = 0;
@@ -534,7 +578,9 @@ function restoreProject(obj) {
   prefUp = pref.prefUp;
   prefDown = pref.prefDown;
   activeSource = obj.activeSource || '加载工程轨迹';
+  const savedTid = obj.activeTrackId;
   activeTrackId = null;
+  if (savedTid && tracks.some(t => t.id === savedTid)) activeTrackId = savedTid;
   breakpoints.length = 0;
   (obj.breakpoints || []).forEach((i) => {
     if (Number.isInteger(i)) breakpoints.push(i);
@@ -562,6 +608,7 @@ function restoreProject(obj) {
   });
   refreshAnnoMarkers();
 
+  syncElevControlsFromState();
   renderTrackList();
   renderClipList();
   renderAnnoList();
@@ -1426,6 +1473,12 @@ $('exportGeoBtn').onclick = () => {
   downloadText(`${name}.geojson`, geo, 'application/geo+json;charset=utf-8');
 };
 
+function loadProjectFromJsonText(txt, silent) {
+  const obj = JSON.parse(txt);
+  restoreProject(obj);
+  if (!silent) alert('工程已打开。');
+}
+
 $('saveProjectBtn').onclick = () => {
   const name = safeName(activeSource || 'route_project');
   const project = serializeProject();
@@ -1438,15 +1491,90 @@ $('loadProjectInput').addEventListener('change', async (e) => {
   if (!f) return;
   try {
     const txt = await f.text();
-    const obj = JSON.parse(txt);
-    restoreProject(obj);
-    alert('工程已加载。');
+    loadProjectFromJsonText(txt, false);
   } catch (err) {
-    alert('加载失败: ' + (err.message || err));
+    alert('打开失败: ' + (err.message || err));
   } finally {
     e.target.value = '';
   }
 });
+
+$('saveLocalBtn').onclick = () => {
+  try {
+    const raw = JSON.stringify(serializeProject());
+    if (raw.length > LS_PROJECT_MAX_BYTES) {
+      alert('工程体积过大，无法存入浏览器，请使用「下载工程 JSON」保存到文件。');
+      return;
+    }
+    localStorage.setItem(LS_PROJECT_KEY, raw);
+    alert('已写入本浏览器。换设备或清除站点数据后会丢失，重要内容请下载 JSON 备份。');
+  } catch (err) {
+    alert('保存失败（可能超出浏览器配额）: ' + (err.message || err));
+  }
+};
+
+$('loadLocalBtn').onclick = () => {
+  const raw = localStorage.getItem(LS_PROJECT_KEY);
+  if (!raw) {
+    alert('本浏览器里没有已保存的工程。');
+    return;
+  }
+  try {
+    loadProjectFromJsonText(raw, false);
+  } catch (err) {
+    alert('读取失败: ' + (err.message || err));
+  }
+};
+
+(() => {
+  const z = $('projectDropZone');
+  if (!z) return;
+  let dragDepth = 0;
+  const hasJson = (files) => files && files.length && /\.json$/i.test(files[0].name || '');
+  z.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    dragDepth++;
+    if (e.dataTransfer.types.includes('Files')) z.classList.add('drag');
+  });
+  z.addEventListener('dragleave', () => {
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (!dragDepth) z.classList.remove('drag');
+  });
+  z.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  });
+  z.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    dragDepth = 0;
+    z.classList.remove('drag');
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!f) return;
+    if (!/\.json$/i.test(f.name)) {
+      alert('请拖入 .json 工程文件');
+      return;
+    }
+    try {
+      const txt = await f.text();
+      loadProjectFromJsonText(txt, false);
+    } catch (err) {
+      alert('打开失败: ' + (err.message || err));
+    }
+  });
+})();
+
+function tryOfferLocalRestore() {
+  if (sessionStorage.getItem('tp_restore_offered')) return;
+  sessionStorage.setItem('tp_restore_offered', '1');
+  const raw = localStorage.getItem(LS_PROJECT_KEY);
+  if (!raw) return;
+  if (!confirm('检测到你曾在本浏览器保存过工程，是否立刻恢复？\n点「取消」则从空白开始（不会删除已存数据）。')) return;
+  try {
+    loadProjectFromJsonText(raw, true);
+  } catch (err) {
+    alert('自动恢复失败: ' + (err.message || err));
+  }
+}
 
 $('analysisTrackSelect').addEventListener('change', (e) => {
   const v = e.target.value;
@@ -1549,6 +1677,7 @@ updateStats();
 renderTrackList();
 renderClipList();
 setToolTab('stitch');
+tryOfferLocalRestore();
 </script>
 </body>
 </html>
