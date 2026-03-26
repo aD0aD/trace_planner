@@ -115,9 +115,9 @@
 
     .site-header {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 10px;
       margin-bottom: 20px;
       padding-bottom: 18px;
       border-bottom: 1px solid var(--line);
@@ -128,6 +128,8 @@
       align-items: center;
       gap: 10px;
       flex-shrink: 0;
+      justify-content: flex-end;
+      width: 100%;
     }
 
     .manual-link {
@@ -589,8 +591,6 @@
       .site-header {
         margin-bottom: 14px;
         padding-bottom: 14px;
-        flex-wrap: wrap;
-        align-items: flex-start;
       }
 
       .brand-logo {
@@ -604,6 +604,7 @@
         width: 100%;
         justify-content: flex-end;
         margin-top: 4px;
+        flex-wrap: wrap;
       }
 
       .tabs { flex-direction: column; }
@@ -624,12 +625,12 @@
         </div>
       </div>
       <div class="header-actions">
+        <a class="manual-link" href="https://github.com/aD0aD/trace_planner#readme" target="_blank" rel="noopener noreferrer" title="在 GitHub 打开使用说明">使用手册</a>
+        <button type="button" class="theme-toggle" id="themeToggle" title="切换浅色/深色模式" aria-label="切换浅色或深色模式">深色</button>
         <select id="langToggle" class="lang-select" aria-label="切换语言">
           <option value="zh">中文</option>
           <option value="en">English</option>
         </select>
-        <a class="manual-link" href="https://github.com/aD0aD/trace_planner#readme" target="_blank" rel="noopener noreferrer" title="在 GitHub 打开使用说明">使用手册</a>
-        <button type="button" class="theme-toggle" id="themeToggle" title="切换浅色/深色模式" aria-label="切换浅色或深色模式">深色</button>
       </div>
     </header>
     <div class="tabs">
@@ -807,7 +808,7 @@ const BASE = {route: [], ele: [], prefDist: [], prefUp: [], prefDown: [], meta: 
 const palette = ['#1e88e5','#43a047','#fb8c00','#8e24aa','#00acc1','#6d4c41'];
 const tracks = []; // {id,name,route,ele,prefDist,prefUp,prefDown,color,layer}
 let activeTrackId = null;
-let activeSource = '未加载轨迹';
+let activeSource = '';
 let elevCalcMode = 'smooth_threshold';
 let elevSmoothWindow = 5;
 let elevThreshold = 1.0;
@@ -865,7 +866,97 @@ const I18N = {
     noEle: '当前轨迹没有可用海拔数据',
     noAnnoImage: '[图]',
     themeLight: '浅色',
-    themeDark: '深色'
+    themeDark: '深色',
+    clickMapToAdd: '点击地图添加中',
+    sourceImported: '导入: ',
+    sourceLoadedProject: '加载工程轨迹',
+    sourceUnknown: '未选择',
+    importedTrackPrefix: '导入轨迹：',
+    currentAnalyzingTag: '[当前分析]',
+    setAsAnalysis: '设为分析轨迹',
+    remove: '移除',
+    up: '上移',
+    down: '下移',
+    reverse: '反向',
+    segReverse: '反穿（终点→起点）',
+    segForward: '正向（起点→终点）',
+    noRouteYet: '暂无可分析轨迹',
+    noBreakpoint: '未设置断点（当前仅1段）',
+    breakpointAt: '断点@',
+    breakpointTip: '断点',
+    previewBreakpointTip: '预览断点',
+    needClipFirst: '请先把片段加入拼接篮子',
+    mergedTooShort: '拼接后轨迹点不足',
+    stitchedReady: '拼接轨迹已生成，已切换为当前分析轨迹。',
+    pickStart: '点击地图选起点',
+    pickEnd: '点击地图选终点',
+    pickStartEnd: '地图选起终点（可反穿）',
+    noBpTrack: '轨迹点不足，无法添加断点',
+    noSplitTrack: '轨迹点不足，无法分段',
+    openFailed: '打开失败',
+    saveFailed: '保存失败（可能超出浏览器配额）',
+    saveLocalDone: '已写入本浏览器。换设备或清除站点数据后会丢失，重要内容请下载 JSON 备份。',
+    localTooLarge: '工程体积过大，无法存入浏览器，请使用「下载工程 JSON」保存到文件。',
+    noLocalProject: '本浏览器里没有已保存的工程。',
+    readFailed: '读取失败',
+    openedProject: '工程已打开。',
+    dragJsonOnly: '请拖入 .json 工程文件',
+    autoRestoreAsk: '检测到你曾在本浏览器保存过工程，是否立刻恢复？\n点「取消」则从空白开始（不会删除已存数据）。',
+    autoRestoreFailed: '自动恢复失败',
+    profileStart: '起',
+    profileEnd: '终',
+    profileElevAxis: '海拔(m)',
+    profileNoData: '轨迹缺少海拔数据',
+    profileNoTrack: '请先导入轨迹',
+    algorithmPrefix: '爬升算法：',
+    clipGapWarn: '片段衔接直线跳跃累计约 ',
+    km: ' km',
+    annoTypeLabelStart: '起点（绿）',
+    annoTypeLabelEnd: '终点（红）',
+    annoTypeLabelCamp: '营地（蓝）',
+    annoTypeLabelSupply: '补给点（橙）',
+    annoTypeLabelRisk: '风险点（紫）',
+    annoTypeLabelNote: '普通标注（黑）'
+    ,currentTrackTitle: '当前分析轨迹'
+    ,trackSource: '轨迹来源'
+    ,trackPoints: '轨迹点数'
+    ,trackTotalDist: '总距离'
+    ,trackTotalUp: '总爬升'
+    ,trackTotalDown: '总下降'
+    ,clipTitle: '片段截取（来自选中轨迹）'
+    ,startIndex: '起点索引'
+    ,endIndex: '终点索引'
+    ,segDist: '该段距离'
+    ,segUp: '该段爬升'
+    ,segDown: '该段下降'
+    ,segDir: '截取方向'
+    ,liveProfile: '实时高度图'
+    ,liveProfileHint: '拖动起点/终点时，图中对应标记会同步移动。'
+    ,clipBasketTitle: '拼接篮子（按顺序）'
+    ,clipBasketHint: '把不同轨迹的片段按顺序加入，然后一键生成新轨迹。'
+    ,buildStitched: '生成拼接轨迹'
+    ,clearBasket: '清空拼接篮子'
+    ,analysisTargetTitle: '分析目标轨迹（当前）'
+    ,analysisTargetHint: '分析结果（距离/爬升/下降/剖面）都基于这条轨迹。'
+    ,switchAnalysis: '切换分析目标'
+    ,elevCalcTitle: '爬升计算选项'
+    ,elevMode: '算法模式'
+    ,smoothWindow: '平滑窗口（点）'
+    ,thresholdM: '阈值（米）'
+    ,elevCalcHint: '切换后会实时重算当前轨迹、分段统计和剖面相关数据。'
+    ,bpTitle: '断点分段分析'
+    ,bpIndex: '断点索引'
+    ,bpCurrent: '当前断点'
+    ,addBp: '添加断点'
+    ,clearBp: '清空断点'
+    ,autoSplitN: '快速均分段数'
+    ,autoSplit: '按段数自动断点'
+    ,bpHint: '断点用于把整条路线切成多段，自动统计每段里程/爬升/下降。'
+    ,segCol1: '段'
+    ,segCol2: '索引范围'
+    ,segCol3: '距离'
+    ,segCol4: '爬升'
+    ,segCol5: '下降'
   },
   en: {
     manual: 'User Guide',
@@ -902,7 +993,97 @@ const I18N = {
     noEle: 'No valid elevation data in current track',
     noAnnoImage: ' [img]',
     themeLight: 'Light',
-    themeDark: 'Dark'
+    themeDark: 'Dark',
+    clickMapToAdd: 'Click map to add',
+    sourceImported: 'Imported: ',
+    sourceLoadedProject: 'Loaded Project Track',
+    sourceUnknown: 'Unselected',
+    importedTrackPrefix: 'Imported: ',
+    currentAnalyzingTag: '[Active]',
+    setAsAnalysis: 'Set as analysis',
+    remove: 'Remove',
+    up: 'Up',
+    down: 'Down',
+    reverse: 'Reverse',
+    segReverse: 'Reverse (end → start)',
+    segForward: 'Forward (start → end)',
+    noRouteYet: 'No analyzable track yet',
+    noBreakpoint: 'No breakpoints set (single segment)',
+    breakpointAt: 'BP@',
+    breakpointTip: 'BP',
+    previewBreakpointTip: 'Preview BP',
+    needClipFirst: 'Please add clips to the basket first',
+    mergedTooShort: 'Merged route has too few points',
+    stitchedReady: 'Stitched route created and set as active analysis track.',
+    pickStart: 'Click map to pick start',
+    pickEnd: 'Click map to pick end',
+    pickStartEnd: 'Pick start/end on map',
+    noBpTrack: 'Track has too few points to add a breakpoint',
+    noSplitTrack: 'Track has too few points to split',
+    openFailed: 'Open failed',
+    saveFailed: 'Save failed (browser quota may be exceeded)',
+    saveLocalDone: 'Saved in this browser. It may be lost after clearing site data. Download JSON for backup.',
+    localTooLarge: 'Project too large for browser storage. Please use Download Project JSON.',
+    noLocalProject: 'No saved project in this browser.',
+    readFailed: 'Read failed',
+    openedProject: 'Project opened.',
+    dragJsonOnly: 'Please drop a .json project file',
+    autoRestoreAsk: 'A saved local project was found. Restore it now?\nCancel to start from a blank state (saved data is kept).',
+    autoRestoreFailed: 'Auto-restore failed',
+    profileStart: 'S',
+    profileEnd: 'E',
+    profileElevAxis: 'Elevation(m)',
+    profileNoData: 'Track has no elevation data',
+    profileNoTrack: 'Please import a track first',
+    algorithmPrefix: 'Climb algorithm: ',
+    clipGapWarn: 'Approx straight-line gap between clips: ',
+    km: ' km',
+    annoTypeLabelStart: 'Start (Green)',
+    annoTypeLabelEnd: 'End (Red)',
+    annoTypeLabelCamp: 'Camp (Blue)',
+    annoTypeLabelSupply: 'Supply (Orange)',
+    annoTypeLabelRisk: 'Risk (Purple)',
+    annoTypeLabelNote: 'Note (Black)'
+    ,currentTrackTitle: 'Current Analysis Track'
+    ,trackSource: 'Source'
+    ,trackPoints: 'Points'
+    ,trackTotalDist: 'Total Distance'
+    ,trackTotalUp: 'Total Ascent'
+    ,trackTotalDown: 'Total Descent'
+    ,clipTitle: 'Clip Segment (from selected track)'
+    ,startIndex: 'Start Index'
+    ,endIndex: 'End Index'
+    ,segDist: 'Segment Distance'
+    ,segUp: 'Segment Ascent'
+    ,segDown: 'Segment Descent'
+    ,segDir: 'Direction'
+    ,liveProfile: 'Live Elevation Profile'
+    ,liveProfileHint: 'When dragging start/end, markers move in sync on the profile.'
+    ,clipBasketTitle: 'Clip Basket (ordered)'
+    ,clipBasketHint: 'Add clips in sequence from different tracks, then build a stitched route.'
+    ,buildStitched: 'Build Stitched Route'
+    ,clearBasket: 'Clear Basket'
+    ,analysisTargetTitle: 'Analysis Target (Current)'
+    ,analysisTargetHint: 'Distance/ascent/descent/profile are all based on this track.'
+    ,switchAnalysis: 'Switch Analysis Target'
+    ,elevCalcTitle: 'Climb Calculation Options'
+    ,elevMode: 'Mode'
+    ,smoothWindow: 'Smoothing Window (pts)'
+    ,thresholdM: 'Threshold (m)'
+    ,elevCalcHint: 'Switching mode will recalculate current track stats and segment analytics.'
+    ,bpTitle: 'Breakpoint Segment Analysis'
+    ,bpIndex: 'Breakpoint Index'
+    ,bpCurrent: 'Current Breakpoint'
+    ,addBp: 'Add BP'
+    ,clearBp: 'Clear BP'
+    ,autoSplitN: 'Auto Split Count'
+    ,autoSplit: 'Auto Breakpoints'
+    ,bpHint: 'Breakpoints split the route into segments and auto-calc each segment stats.'
+    ,segCol1: 'Seg'
+    ,segCol2: 'Index Range'
+    ,segCol3: 'Distance'
+    ,segCol4: 'Ascent'
+    ,segCol5: 'Descent'
   }
 };
 
@@ -911,6 +1092,8 @@ function t(k) { return (I18N[currentLang] && I18N[currentLang][k]) || k; }
 function applyLanguage() {
   document.documentElement.lang = currentLang === 'en' ? 'en' : 'zh-CN';
   if ($('langToggle')) $('langToggle').value = currentLang;
+  const tag = document.querySelector('.brand-tagline');
+  if (tag) tag.textContent = currentLang === 'en' ? 'Track Stitching & Analysis' : '轨迹拼接与分析';
   $('tabStitch').textContent = t('tabStitch');
   $('tabAnalysis').textContent = t('tabAnalysis');
   $('saveProjectBtn').textContent = t('saveProject');
@@ -918,9 +1101,11 @@ function applyLanguage() {
   $('saveLocalBtn').textContent = t('saveLocal');
   $('loadLocalBtn').textContent = t('loadLocal');
   $('addAnnoBtn').textContent = annoMode
-    ? (currentLang === 'en' ? 'Click map to add' : '点击地图添加中')
+    ? t('clickMapToAdd')
     : t('addAnno');
   $('clearAnnoBtn').textContent = t('clearAnno');
+  const pickBtn = $('pickBtn');
+  if (pickBtn && !pickMode) pickBtn.textContent = t('pickStartEnd');
   $('exportElevationBtn').textContent = t('exportElev');
   $('exportKmlBtn').textContent = currentLang === 'en' ? 'Export KML' : '导出KML';
   $('exportGpxBtn').textContent = currentLang === 'en' ? 'Export GPX' : '导出GPX';
@@ -933,17 +1118,20 @@ function applyLanguage() {
   }
   const annoSel = $('annoType');
   if (annoSel && annoSel.options.length >= 6) {
-    annoSel.options[0].textContent = currentLang === 'en' ? 'Start (Green)' : '起点（绿）';
-    annoSel.options[1].textContent = currentLang === 'en' ? 'End (Red)' : '终点（红）';
-    annoSel.options[2].textContent = currentLang === 'en' ? 'Camp (Blue)' : '营地（蓝）';
-    annoSel.options[3].textContent = currentLang === 'en' ? 'Supply (Orange)' : '补给点（橙）';
-    annoSel.options[4].textContent = currentLang === 'en' ? 'Risk (Purple)' : '风险点（紫）';
-    annoSel.options[5].textContent = currentLang === 'en' ? 'Note (Black)' : '普通标注（黑）';
+    annoSel.options[0].textContent = t('annoTypeLabelStart');
+    annoSel.options[1].textContent = t('annoTypeLabelEnd');
+    annoSel.options[2].textContent = t('annoTypeLabelCamp');
+    annoSel.options[3].textContent = t('annoTypeLabelSupply');
+    annoSel.options[4].textContent = t('annoTypeLabelRisk');
+    annoSel.options[5].textContent = t('annoTypeLabelNote');
   }
   const manual = document.querySelector('.manual-link');
   if (manual) {
     manual.textContent = t('manual');
     manual.title = currentLang === 'en' ? 'Open user guide on GitHub' : '在 GitHub 打开使用说明';
+    manual.href = currentLang === 'en'
+      ? 'https://github.com/aD0aD/trace_planner/blob/main/README.en.md'
+      : 'https://github.com/aD0aD/trace_planner/blob/main/README.zh.md';
   }
   const themeBtn = $('themeToggle');
   if (themeBtn) {
@@ -968,6 +1156,68 @@ function applyLanguage() {
     const h = boxesShared[1].querySelector('.hint');
     if (h) h.textContent = t('importHint');
   }
+  const stitchBoxes = document.querySelectorAll('.box.tool-stitch');
+  if (stitchBoxes[0]) {
+    const b = stitchBoxes[0].querySelector('.row b'); if (b) b.textContent = t('currentTrackTitle');
+    const labels = stitchBoxes[0].querySelectorAll('.label');
+    if (labels[0]) labels[0].textContent = t('trackSource');
+    if (labels[1]) labels[1].textContent = t('trackPoints');
+    if (labels[2]) labels[2].textContent = t('trackTotalDist');
+    if (labels[3]) labels[3].textContent = t('trackTotalUp');
+    if (labels[4]) labels[4].textContent = t('trackTotalDown');
+  }
+  if (stitchBoxes[1]) {
+    const b = stitchBoxes[1].querySelector('.row b'); if (b) b.textContent = t('clipTitle');
+    const rows = stitchBoxes[1].querySelectorAll('.row');
+    if (rows[1]) rows[1].innerHTML = `${t('startIndex')}: <span id="startIdx">${$('startIdx').textContent || ''}</span>`;
+    if (rows[2]) rows[2].innerHTML = `${t('endIndex')}: <span id="endIdx">${$('endIdx').textContent || ''}</span>`;
+    const labels = stitchBoxes[1].querySelectorAll('.label');
+    if (labels[0]) labels[0].textContent = t('segDist');
+    if (labels[1]) labels[1].textContent = t('segUp');
+    if (labels[2]) labels[2].textContent = t('segDown');
+    if (labels[3]) labels[3].textContent = t('segDir');
+    if (rows[7]) rows[7].innerHTML = `<b>${t('liveProfile')}</b>`;
+    const hint = stitchBoxes[1].querySelector('.hint'); if (hint) hint.textContent = t('liveProfileHint');
+  }
+  if (stitchBoxes[2]) {
+    const b = stitchBoxes[2].querySelector('.row b'); if (b) b.textContent = t('clipBasketTitle');
+    const hint = stitchBoxes[2].querySelector('.hint'); if (hint) hint.textContent = t('clipBasketHint');
+    const btns = stitchBoxes[2].querySelectorAll('button');
+    if (btns[0]) btns[0].textContent = t('buildStitched');
+    if (btns[1]) btns[1].textContent = t('clearBasket');
+  }
+  const ana = document.querySelectorAll('.box.tool-analysis');
+  if (ana[0]) {
+    const b = ana[0].querySelector('.row b'); if (b) b.textContent = t('analysisTargetTitle');
+    const hint = ana[0].querySelector('.analysis-target .hint'); if (hint) hint.textContent = t('analysisTargetHint');
+    const label = ana[0].querySelector('.label'); if (label) label.textContent = t('switchAnalysis');
+  }
+  if (ana[1]) {
+    const b = ana[1].querySelector('.row b'); if (b) b.textContent = t('elevCalcTitle');
+    const labels = ana[1].querySelectorAll('.label');
+    if (labels[0]) labels[0].textContent = t('elevMode');
+    if (labels[1]) labels[1].textContent = t('smoothWindow');
+    if (labels[2]) labels[2].textContent = t('thresholdM');
+    const hint = ana[1].querySelector('.hint'); if (hint) hint.textContent = t('elevCalcHint');
+  }
+  if (ana[2]) {
+    const b = ana[2].querySelector('.row b'); if (b) b.textContent = t('bpTitle');
+    const labels = ana[2].querySelectorAll('.label');
+    if (labels[0]) labels[0].textContent = t('bpIndex');
+    if (labels[1]) labels[1].textContent = t('bpCurrent');
+    if (labels[2]) labels[2].textContent = t('autoSplitN');
+    const btns = ana[2].querySelectorAll('button');
+    if (btns[0]) btns[0].textContent = t('addBp');
+    if (btns[1]) btns[1].textContent = t('clearBp');
+    if (btns[2]) btns[2].textContent = t('autoSplit');
+    const hint = ana[2].querySelector('.hint'); if (hint) hint.textContent = t('bpHint');
+    const th = ana[2].querySelectorAll('th');
+    if (th[0]) th[0].textContent = t('segCol1');
+    if (th[1]) th[1].textContent = t('segCol2');
+    if (th[2]) th[2].textContent = t('segCol3');
+    if (th[3]) th[3].textContent = t('segCol4');
+    if (th[4]) th[4].textContent = t('segCol5');
+  }
   const annoBox = document.querySelectorAll('.box.tool-analysis')[4];
   if (annoBox) {
     const b = annoBox.querySelector('.row b');
@@ -982,16 +1232,17 @@ function applyLanguage() {
     const h = exportBox.querySelector('.hint');
     if (h) h.textContent = t('exportHint');
   }
+  if (typeof renderLayerControl === 'function') renderLayerControl();
   renderAnnoList();
   updateStats();
 }
 
-function applyTrackAsActive(t) {
-  if (!t) return;
-  activeTrackId = t.id;
-  activeSource = '导入: ' + t.name;
-  route = [...t.route];
-  ele = [...t.ele];
+function applyTrackAsActive(trackObj) {
+  if (!trackObj) return;
+  activeTrackId = trackObj.id;
+  activeSource = t('sourceImported') + trackObj.name;
+  route = [...trackObj.route];
+  ele = [...trackObj.ele];
   const pref = computePrefix(route, ele);
   prefDist = pref.prefDist;
   prefUp = pref.prefUp;
@@ -1000,7 +1251,7 @@ function applyTrackAsActive(t) {
 
 function syncAnalysisTargetUI() {
   const nameEl = $('analysisTargetName');
-  if (nameEl) nameEl.textContent = activeSource || '未选择';
+  if (nameEl) nameEl.textContent = activeSource || t('sourceUnknown');
   const sel = $('analysisTrackSelect');
   if (!sel) return;
   const currentValue = activeTrackId || '__current__';
@@ -1008,7 +1259,7 @@ function syncAnalysisTargetUI() {
   tracks.forEach((t) => {
     const op = document.createElement('option');
     op.value = t.id;
-    op.textContent = currentLang === 'en' ? `Imported: ${t.name} (${t.route.length} pts)` : `导入轨迹：${t.name} (${t.route.length}点)`;
+    op.textContent = currentLang === 'en' ? `${t('importedTrackPrefix')}${t.name} (${t.route.length} pts)` : `${t('importedTrackPrefix')}${t.name} (${t.route.length}点)`;
     sel.appendChild(op);
   });
   sel.value = currentValue;
@@ -1042,7 +1293,7 @@ function safeName(s) {
 
 function exportRoutePoster() {
   if (!route || route.length < 2) {
-    alert('当前没有可导出的轨迹');
+    alert(t('noRouteExport'));
     return;
   }
   const W = 2200, H = 2200;
@@ -1275,7 +1526,7 @@ function syncElevControlsFromState() {
 
 function restoreProject(obj) {
   if (!obj || !Array.isArray(obj.route) || obj.route.length < 2) {
-    throw new Error('工程文件无效：缺少轨迹');
+    throw new Error(currentLang === 'en' ? 'Invalid project file: missing route' : '工程文件无效：缺少轨迹');
   }
 
   applyElevFromProject(obj);
@@ -1290,7 +1541,7 @@ function restoreProject(obj) {
     const layer = L.polyline(t.route, {color, weight:2, opacity:0.8}).addTo(importedLayer);
     tracks.push({
       id: t.id || crypto.randomUUID(),
-      name: t.name || `轨迹${i+1}`,
+      name: t.name || (currentLang === 'en' ? `Track ${i+1}` : `轨迹${i+1}`),
       route: t.route,
       ele: t.ele || new Array(t.route.length).fill(null),
       prefDist: pref.prefDist,
@@ -1307,7 +1558,7 @@ function restoreProject(obj) {
   prefDist = pref.prefDist;
   prefUp = pref.prefUp;
   prefDown = pref.prefDown;
-  activeSource = obj.activeSource || '加载工程轨迹';
+  activeSource = obj.activeSource || t('sourceLoadedProject');
   const savedTid = obj.activeTrackId;
   activeTrackId = null;
   if (savedTid && tracks.some(t => t.id === savedTid)) activeTrackId = savedTid;
@@ -1358,7 +1609,18 @@ const importedLayer = L.layerGroup().addTo(map);
 const annoLayer = L.layerGroup().addTo(map);
 const bpLayer = L.layerGroup().addTo(map);
 
-L.control.layers({'卫星图':sat, '地形图':topo, '街道图':osm}, {'阴影地形':hill, '当前轨迹':activeLayer, '当前截取段':segmentLayer, '导入轨迹':importedLayer, '标注':annoLayer, '断点':bpLayer}, {collapsed:false}).addTo(map);
+let layerControl = null;
+function renderLayerControl() {
+  if (layerControl) map.removeControl(layerControl);
+  const baseLabels = currentLang === 'en'
+    ? {'Satellite': sat, 'Topographic': topo, 'Street': osm}
+    : {'卫星图': sat, '地形图': topo, '街道图': osm};
+  const overlayLabels = currentLang === 'en'
+    ? {'Hillshade': hill, 'Active Track': activeLayer, 'Selected Segment': segmentLayer, 'Imported Tracks': importedLayer, 'Annotations': annoLayer, 'Breakpoints': bpLayer}
+    : {'阴影地形': hill, '当前轨迹': activeLayer, '当前截取段': segmentLayer, '导入轨迹': importedLayer, '标注': annoLayer, '断点': bpLayer};
+  layerControl = L.control.layers(baseLabels, overlayLabels, {collapsed:false}).addTo(map);
+}
+renderLayerControl();
 
 let baseLine = null, segLine = null, startMarker = null, endMarker = null;
 let bpPreviewMarker = null;
@@ -1492,7 +1754,7 @@ function renderBreakpointMarkers(previewIdx = null) {
       fillOpacity: 0.95,
       weight: 2
     }).addTo(bpLayer);
-    marker.bindTooltip(`断点${i + 1} @${idx}`, {direction:'top', offset:[0, -8]});
+    marker.bindTooltip(`${t('breakpointTip')}${i + 1} @${idx}`, {direction:'top', offset:[0, -8]});
   });
 
   if (Number.isInteger(previewIdx) && previewIdx >= 1 && previewIdx <= route.length - 2) {
@@ -1506,7 +1768,7 @@ function renderBreakpointMarkers(previewIdx = null) {
         weight: 2,
         dashArray: '4,3'
       }).addTo(bpLayer);
-      bpPreviewMarker.bindTooltip(`预览断点 @${previewIdx}`, {direction:'top', offset:[0, -10], permanent: true});
+      bpPreviewMarker.bindTooltip(`${t('previewBreakpointTip')} @${previewIdx}`, {direction:'top', offset:[0, -10], permanent: true});
     }
   } else {
     bpPreviewMarker = null;
@@ -1538,7 +1800,7 @@ function renderBreakpointAnalysis() {
   if (!bpList || !tbody || !range || !val) return;
 
   if (!route || route.length < 2) {
-    bpList.textContent = '暂无可分析轨迹';
+    bpList.textContent = t('noRouteYet');
     tbody.innerHTML = '';
     range.min = 1; range.max = 1; range.value = 1;
     val.textContent = '-';
@@ -1556,14 +1818,14 @@ function renderBreakpointAnalysis() {
   normalizeBreakpoints();
   bpList.innerHTML = '';
   if (!breakpoints.length) {
-    bpList.textContent = '未设置断点（当前仅1段）';
+    bpList.textContent = t('noBreakpoint');
   } else {
     breakpoints.forEach((b) => {
       const chip = document.createElement('span');
       chip.className = 'bp-chip';
-      chip.innerHTML = `断点@${b}`;
+      chip.innerHTML = `${t('breakpointAt')}${b}`;
       const btn = document.createElement('button');
-      btn.textContent = '删除';
+      btn.textContent = t('del');
       btn.onclick = () => {
         const idx = breakpoints.indexOf(b);
         if (idx >= 0) breakpoints.splice(idx, 1);
@@ -1607,7 +1869,7 @@ function updateSegment() {
   $('segDist').textContent=(st.dist/1000).toFixed(2)+' km';
   $('segUp').textContent=st.up.toFixed(0)+' m';
   $('segDown').textContent=st.down.toFixed(0)+' m';
-  $('segDirection').textContent = reversed ? '反穿（终点→起点）' : '正向（起点→终点）';
+  $('segDirection').textContent = reversed ? t('segReverse') : t('segForward');
   renderLiveProfile(i, j);
 }
 $('startRange').addEventListener('input', updateSegment);
@@ -1692,21 +1954,21 @@ function renderLiveProfile(startIdx, endIdx) {
   ctx.fillStyle = '#16a34a';
   ctx.beginPath(); ctx.arc(sx, sy, 4.5, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#166534';
-  ctx.fillText(`起 ${Math.round(elev[si])}m`, Math.min(x1 - 74, sx + 6), Math.max(y1 + 12, sy - 8));
+  ctx.fillText(`${t('profileStart')} ${Math.round(elev[si])}m`, Math.min(x1 - 74, sx + 6), Math.max(y1 + 12, sy - 8));
 
   ctx.strokeStyle = 'rgba(220,38,38,0.55)';
   ctx.beginPath(); ctx.moveTo(ex, y0); ctx.lineTo(ex, ey); ctx.stroke();
   ctx.fillStyle = '#dc2626';
   ctx.beginPath(); ctx.arc(ex, ey, 4.5, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#991b1b';
-  ctx.fillText(`终 ${Math.round(elev[ei])}m`, Math.min(x1 - 74, ex + 6), Math.max(y1 + 12, ey - 8));
+  ctx.fillText(`${t('profileEnd')} ${Math.round(elev[ei])}m`, Math.min(x1 - 74, ex + 6), Math.max(y1 + 12, ey - 8));
 
   // axis labels
   ctx.fillStyle = '#475569';
   ctx.font = '11px sans-serif';
   ctx.fillText('0km', x0 - 8, y0 + 16);
   ctx.fillText((total / 1000).toFixed(1) + 'km', x1 - 32, y0 + 16);
-  ctx.fillText('海拔(m)', 6, y1 - 2);
+  ctx.fillText(t('profileElevAxis'), 6, y1 - 2);
 }
 
 function refreshAnnoMarkers() {
@@ -1743,22 +2005,22 @@ function refreshAnnoMarkers() {
 
 function renderTrackList() {
   const ul = $('trackList'); ul.innerHTML='';
-  tracks.forEach((t) => {
+  tracks.forEach((trackObj) => {
     const li = document.createElement('li');
-    const activeTag = activeTrackId === t.id ? ' <b style="color:#2563eb">[当前分析]</b>' : '';
-    li.innerHTML = `<span class='t' style='color:${t.color}'>${t.name} (${t.route.length}点)${activeTag}</span>`;
-    const useBtn = document.createElement('button'); useBtn.textContent='设为分析轨迹';
+    const activeTag = activeTrackId === trackObj.id ? ` <b style="color:#2563eb">${t('currentAnalyzingTag')}</b>` : '';
+    li.innerHTML = `<span class='t' style='color:${trackObj.color}'>${trackObj.name} (${currentLang === 'en' ? `${trackObj.route.length} pts` : `${trackObj.route.length}点`})${activeTag}</span>`;
+    const useBtn = document.createElement('button'); useBtn.textContent=t('setAsAnalysis');
     useBtn.onclick = () => {
-      applyTrackAsActive(t);
+      applyTrackAsActive(trackObj);
       redrawActiveRoute();
       renderTrackList();
     };
-    const delBtn = document.createElement('button'); delBtn.textContent='移除';
+    const delBtn = document.createElement('button'); delBtn.textContent=t('remove');
     delBtn.onclick = () => {
-      importedLayer.removeLayer(t.layer);
-      const idx = tracks.findIndex(x => x.id===t.id);
+      importedLayer.removeLayer(trackObj.layer);
+      const idx = tracks.findIndex(x => x.id===trackObj.id);
       if (idx>=0) tracks.splice(idx,1);
-      if (activeTrackId === t.id) activeTrackId = null;
+      if (activeTrackId === trackObj.id) activeTrackId = null;
       renderTrackList();
       updateStats();
     };
@@ -1817,7 +2079,7 @@ function parseKmlText(text, name) {
     }
   }
 
-  if (cleanRoute.length < 2) throw new Error(name + ' 无有效轨迹（可能只有点标注）');
+  if (cleanRoute.length < 2) throw new Error(currentLang === 'en' ? `${name}: no valid route (may contain only points)` : `${name} 无有效轨迹（可能只有点标注）`);
   return {name, route: cleanRoute, ele: cleanEle};
 }
 
@@ -1832,7 +2094,7 @@ function parseGpxText(text, name) {
     const e = p.querySelector('ele');
     ele.push(e ? Number(e.textContent) : null);
   });
-  if (route.length<2) throw new Error(name+' 无有效坐标');
+  if (route.length<2) throw new Error(currentLang === 'en' ? `${name}: no valid coordinates` : `${name} 无有效坐标`);
   return {name, route, ele};
 }
 
@@ -1843,7 +2105,7 @@ async function parseFile(file) {
     const zip = await JSZip.loadAsync(buf);
     let kmlEntry = null;
     zip.forEach((_, e) => { if (!kmlEntry && e.name.toLowerCase().endsWith('.kml')) kmlEntry = e; });
-    if (!kmlEntry) throw new Error(name+' 未找到kml');
+    if (!kmlEntry) throw new Error(currentLang === 'en' ? `${name}: no KML found in KMZ` : `${name} 未找到kml`);
     const text = await kmlEntry.async('text');
     return parseKmlText(text, name);
   }
@@ -1862,7 +2124,7 @@ $('trackInput').addEventListener('change', async (e) => {
       const layer = L.polyline(parsed.route, {color, weight:2, opacity:0.8}).addTo(importedLayer);
       tracks.push({id: crypto.randomUUID(), name: parsed.name, route: parsed.route, ele: parsed.ele, prefDist: pref.prefDist, prefUp: pref.prefUp, prefDown: pref.prefDown, color, layer});
     } catch (err) {
-      alert('导入失败: ' + (err.message || err));
+      alert((currentLang === 'en' ? 'Import failed: ' : '导入失败: ') + (err.message || err));
     }
   }
   renderTrackList();
@@ -1881,14 +2143,14 @@ function renderClipList() {
   clips.forEach((c, i) => {
     const li=document.createElement('li');
     const km=(c.dist/1000).toFixed(2);
-    li.innerHTML=`<span class='t'>${i+1}. ${c.trackName} [${c.a}-${c.b}] ${c.reverse?'(反向)':''} ${km}km</span>`;
-    const upBtn=document.createElement('button'); upBtn.textContent='上移';
+    li.innerHTML=`<span class='t'>${i+1}. ${c.trackName} [${c.a}-${c.b}] ${c.reverse?(currentLang === 'en' ? '(Reverse)' : '(反向)'):''} ${km}km</span>`;
+    const upBtn=document.createElement('button'); upBtn.textContent=t('up');
     upBtn.onclick=()=>{ if(i>0){ [clips[i-1],clips[i]]=[clips[i],clips[i-1]]; renderClipList(); } };
-    const downBtn=document.createElement('button'); downBtn.textContent='下移';
+    const downBtn=document.createElement('button'); downBtn.textContent=t('down');
     downBtn.onclick=()=>{ if(i<clips.length-1){ [clips[i+1],clips[i]]=[clips[i],clips[i+1]]; renderClipList(); } };
-    const revBtn=document.createElement('button'); revBtn.textContent='反向';
+    const revBtn=document.createElement('button'); revBtn.textContent=t('reverse');
     revBtn.onclick=()=>{ c.reverse=!c.reverse; renderClipList(); };
-    const delBtn=document.createElement('button'); delBtn.textContent='删除';
+    const delBtn=document.createElement('button'); delBtn.textContent=t('del');
     delBtn.onclick=()=>{ clips.splice(i,1); renderClipList(); };
     li.append(upBtn,downBtn,revBtn,delBtn);
     ul.appendChild(li);
@@ -1900,7 +2162,7 @@ function renderClipList() {
       totalGap += hav(pLast[0],pLast[1],cFirst[0],cFirst[1]);
     }
   });
-  $('gapWarning').textContent = clips.length>1 ? `片段衔接直线跳跃累计约 ${(totalGap/1000).toFixed(2)} km` : '';
+  $('gapWarning').textContent = clips.length>1 ? `${t('clipGapWarn')}${(totalGap/1000).toFixed(2)}${t('km')}` : '';
 }
 
 $('addClipBtn').onclick = () => {
@@ -1918,7 +2180,7 @@ $('addClipBtn').onclick = () => {
 $('clearClipBtn').onclick = () => { clips.length=0; renderClipList(); };
 
 $('buildBtn').onclick = () => {
-  if (!clips.length) { alert('请先把片段加入拼接篮子'); return; }
+  if (!clips.length) { alert(t('needClipFirst')); return; }
   const mergedRoute=[]; const mergedEle=[];
   clips.forEach((c, idx) => {
     const pts = c.reverse ? [...c.points].reverse() : c.points;
@@ -1933,7 +2195,7 @@ $('buildBtn').onclick = () => {
       mergedEle.push(...els.slice(1));
     }
   });
-  if (mergedRoute.length < 2) { alert('拼接后轨迹点不足'); return; }
+  if (mergedRoute.length < 2) { alert(t('mergedTooShort')); return; }
 
   const pref = computePrefix(mergedRoute, mergedEle);
   route = mergedRoute;
@@ -1941,27 +2203,27 @@ $('buildBtn').onclick = () => {
   prefDist = pref.prefDist;
   prefUp = pref.prefUp;
   prefDown = pref.prefDown;
-  activeSource = `拼接轨迹(${clips.length}段)`;
+  activeSource = currentLang === 'en' ? `Stitched route (${clips.length} clips)` : `拼接轨迹(${clips.length}段)`;
   activeTrackId = null;
   redrawActiveRoute();
   renderTrackList();
-  alert('拼接轨迹已生成，已切换为当前分析轨迹。');
+  alert(t('stitchedReady'));
 };
 
 // 地图选段
 let pickMode=false, pickCount=0;
 $('pickBtn').onclick = () => {
   pickMode=true; pickCount=0;
-  $('pickBtn').textContent='点击地图选起点';
+  $('pickBtn').textContent=t('pickStart');
 };
 
 map.on('click', (e) => {
   if (pickMode) {
     const idx = nearestIdx(e.latlng, route);
     if (pickCount===0) {
-      $('startRange').value=idx; pickCount=1; $('pickBtn').textContent='点击地图选终点';
+      $('startRange').value=idx; pickCount=1; $('pickBtn').textContent=t('pickEnd');
     } else {
-      $('endRange').value=idx; pickMode=false; pickCount=0; $('pickBtn').textContent='地图选起终点（可反穿）';
+      $('endRange').value=idx; pickMode=false; pickCount=0; $('pickBtn').textContent=t('pickStartEnd');
     }
     updateSegment();
     return;
@@ -1973,9 +2235,7 @@ map.on('click', (e) => {
 let annoMode=false;
 $('addAnnoBtn').onclick = () => {
   annoMode=!annoMode;
-  $('addAnnoBtn').textContent = annoMode
-    ? (currentLang === 'en' ? 'Click map to add' : '点击地图添加中')
-    : t('addAnno');
+  $('addAnnoBtn').textContent = annoMode ? t('clickMapToAdd') : t('addAnno');
 };
 
 function renderAnnoList() {
@@ -2080,7 +2340,7 @@ $('bpIndexRange').addEventListener('input', () => {
 
 $('addBpBtn').onclick = () => {
   if (!route || route.length < 3) {
-    alert('轨迹点不足，无法添加断点');
+    alert(t('noBpTrack'));
     return;
   }
   const idx = Number($('bpIndexRange').value);
@@ -2097,7 +2357,7 @@ $('clearBpBtn').onclick = () => {
 
 $('autoSplitBtn').onclick = () => {
   if (!route || route.length < 3) {
-    alert('轨迹点不足，无法分段');
+    alert(t('noSplitTrack'));
     return;
   }
   const n = Math.round(Number($('splitCountInput').value));
@@ -2256,7 +2516,7 @@ $('exportGeoBtn').onclick = () => {
 function loadProjectFromJsonText(txt, silent) {
   const obj = JSON.parse(txt);
   restoreProject(obj);
-  if (!silent) alert('工程已打开。');
+  if (!silent) alert(t('openedProject'));
 }
 
 $('saveProjectBtn').onclick = () => {
@@ -2273,7 +2533,7 @@ $('loadProjectInput').addEventListener('change', async (e) => {
     const txt = await f.text();
     loadProjectFromJsonText(txt, false);
   } catch (err) {
-    alert('打开失败: ' + (err.message || err));
+    alert(`${t('openFailed')}: ` + (err.message || err));
   } finally {
     e.target.value = '';
   }
@@ -2283,26 +2543,26 @@ $('saveLocalBtn').onclick = () => {
   try {
     const raw = JSON.stringify(serializeProject());
     if (raw.length > LS_PROJECT_MAX_BYTES) {
-      alert('工程体积过大，无法存入浏览器，请使用「下载工程 JSON」保存到文件。');
+      alert(t('localTooLarge'));
       return;
     }
     localStorage.setItem(LS_PROJECT_KEY, raw);
-    alert('已写入本浏览器。换设备或清除站点数据后会丢失，重要内容请下载 JSON 备份。');
+    alert(t('saveLocalDone'));
   } catch (err) {
-    alert('保存失败（可能超出浏览器配额）: ' + (err.message || err));
+    alert(`${t('saveFailed')}: ` + (err.message || err));
   }
 };
 
 $('loadLocalBtn').onclick = () => {
   const raw = localStorage.getItem(LS_PROJECT_KEY);
   if (!raw) {
-    alert('本浏览器里没有已保存的工程。');
+    alert(t('noLocalProject'));
     return;
   }
   try {
     loadProjectFromJsonText(raw, false);
   } catch (err) {
-    alert('读取失败: ' + (err.message || err));
+    alert(`${t('readFailed')}: ` + (err.message || err));
   }
 };
 
@@ -2331,14 +2591,14 @@ $('loadLocalBtn').onclick = () => {
     const f = e.dataTransfer.files && e.dataTransfer.files[0];
     if (!f) return;
     if (!/\.json$/i.test(f.name)) {
-      alert('请拖入 .json 工程文件');
+      alert(t('dragJsonOnly'));
       return;
     }
     try {
       const txt = await f.text();
       loadProjectFromJsonText(txt, false);
     } catch (err) {
-      alert('打开失败: ' + (err.message || err));
+      alert(`${t('openFailed')}: ` + (err.message || err));
     }
   });
 })();
@@ -2348,11 +2608,11 @@ function tryOfferLocalRestore() {
   sessionStorage.setItem('tp_restore_offered', '1');
   const raw = localStorage.getItem(LS_PROJECT_KEY);
   if (!raw) return;
-  if (!confirm('检测到你曾在本浏览器保存过工程，是否立刻恢复？\n点「取消」则从空白开始（不会删除已存数据）。')) return;
+  if (!confirm(t('autoRestoreAsk'))) return;
   try {
     loadProjectFromJsonText(raw, true);
   } catch (err) {
-    alert('自动恢复失败: ' + (err.message || err));
+    alert(`${t('autoRestoreFailed')}: ` + (err.message || err));
   }
 }
 
