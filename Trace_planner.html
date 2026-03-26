@@ -164,6 +164,17 @@
       font-size: 0.75rem !important;
       min-width: 4.5rem;
     }
+    .lang-select {
+      min-width: 110px;
+      max-width: 140px;
+      padding: 7px 10px;
+      font-size: 0.75rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink-secondary);
+      box-shadow: var(--shadow-sm);
+    }
 
     .brand {
       display: flex;
@@ -613,6 +624,10 @@
         </div>
       </div>
       <div class="header-actions">
+        <select id="langToggle" class="lang-select" aria-label="切换语言">
+          <option value="zh">中文</option>
+          <option value="en">English</option>
+        </select>
         <a class="manual-link" href="https://github.com/aD0aD/trace_planner#readme" target="_blank" rel="noopener noreferrer" title="在 GitHub 打开使用说明">使用手册</a>
         <button type="button" class="theme-toggle" id="themeToggle" title="切换浅色/深色模式" aria-label="切换浅色或深色模式">深色</button>
       </div>
@@ -810,6 +825,166 @@ const breakpoints = []; // 内部断点索引，不含0和末尾
 const $ = (id) => document.getElementById(id);
 const LS_PROJECT_KEY = 'trace_planner_project_v1';
 const LS_PROJECT_MAX_BYTES = 4 * 1024 * 1024;
+const LS_LANG_KEY = 'trace_planner_lang';
+let currentLang = localStorage.getItem(LS_LANG_KEY) || 'zh';
+if (!['zh', 'en'].includes(currentLang)) currentLang = 'zh';
+
+const I18N = {
+  zh: {
+    manual: '使用手册',
+    tabStitch: '轨迹拼接工具',
+    tabAnalysis: '轨迹分析工具',
+    projectTitle: '工程 / 项目',
+    projectLogin: '（无需登录）',
+    projectHint: '下载 JSON 可换电脑打开；「本浏览器」仅本机暂存，清缓存会丢。',
+    saveProject: '下载工程 JSON',
+    loadProject: '打开工程 JSON',
+    saveLocal: '保存到本浏览器',
+    loadLocal: '从本浏览器读取',
+    dropOpen: '或将 <code>.project.json</code> 拖到此处打开',
+    privacy: '轨迹与工程数据只在你的浏览器里处理，本站不接收、不存储你的文件。',
+    importTitle: '导入多条轨迹',
+    importHint: '导入后每条轨迹可单独选中进行“截取片段”。',
+    annoTitle: '路线标注',
+    annoType: '标注类型',
+    addAnno: '添加标注',
+    clearAnno: '清空标注',
+    exportTitle: '导出与工程',
+    exportElev: '导出爬升下降图PNG',
+    exportHint: '工程请在上方「工程 / 项目」中下载或打开。',
+    fly: '定位',
+    edit: '编辑',
+    del: '删除',
+    editTextPrompt: '修改标注文字：',
+    imageActionPrompt: '图片操作：输入 keep(保留) / replace(替换) / remove(删除)',
+    addImageConfirm: '是否为该标注添加图片？',
+    chooseImage: '请选择图片文件',
+    readImgFail: '读取图片失败',
+    noRouteExport: '当前没有可导出的轨迹',
+    noRouteAnalyze: '当前没有可分析轨迹',
+    noEle: '当前轨迹没有可用海拔数据',
+    noAnnoImage: '[图]',
+    themeLight: '浅色',
+    themeDark: '深色'
+  },
+  en: {
+    manual: 'User Guide',
+    tabStitch: 'Track Stitching',
+    tabAnalysis: 'Track Analysis',
+    projectTitle: 'Project',
+    projectLogin: '(No login required)',
+    projectHint: 'Download JSON to move across devices. “Browser storage” is local only and may be cleared.',
+    saveProject: 'Download Project JSON',
+    loadProject: 'Open Project JSON',
+    saveLocal: 'Save in Browser',
+    loadLocal: 'Load from Browser',
+    dropOpen: 'Or drag a <code>.project.json</code> file here to open',
+    privacy: 'All route/project data stays in your browser. This site does not upload or store your files.',
+    importTitle: 'Import Multiple Tracks',
+    importHint: 'After import, each track can be selected and clipped independently.',
+    annoTitle: 'Annotations',
+    annoType: 'Annotation Type',
+    addAnno: 'Add Annotation',
+    clearAnno: 'Clear Annotations',
+    exportTitle: 'Export',
+    exportElev: 'Export Elevation Chart PNG',
+    exportHint: 'Project save/load is available in the top “Project” section.',
+    fly: 'Locate',
+    edit: 'Edit',
+    del: 'Delete',
+    editTextPrompt: 'Edit annotation text:',
+    imageActionPrompt: 'Image action: keep / replace / remove',
+    addImageConfirm: 'Add an image for this annotation?',
+    chooseImage: 'Please select an image file',
+    readImgFail: 'Failed to read image',
+    noRouteExport: 'No track available for export',
+    noRouteAnalyze: 'No track available for analysis',
+    noEle: 'No valid elevation data in current track',
+    noAnnoImage: ' [img]',
+    themeLight: 'Light',
+    themeDark: 'Dark'
+  }
+};
+
+function t(k) { return (I18N[currentLang] && I18N[currentLang][k]) || k; }
+
+function applyLanguage() {
+  document.documentElement.lang = currentLang === 'en' ? 'en' : 'zh-CN';
+  if ($('langToggle')) $('langToggle').value = currentLang;
+  $('tabStitch').textContent = t('tabStitch');
+  $('tabAnalysis').textContent = t('tabAnalysis');
+  $('saveProjectBtn').textContent = t('saveProject');
+  $('loadProjectBtn').textContent = t('loadProject');
+  $('saveLocalBtn').textContent = t('saveLocal');
+  $('loadLocalBtn').textContent = t('loadLocal');
+  $('addAnnoBtn').textContent = annoMode
+    ? (currentLang === 'en' ? 'Click map to add' : '点击地图添加中')
+    : t('addAnno');
+  $('clearAnnoBtn').textContent = t('clearAnno');
+  $('exportElevationBtn').textContent = t('exportElev');
+  $('exportKmlBtn').textContent = currentLang === 'en' ? 'Export KML' : '导出KML';
+  $('exportGpxBtn').textContent = currentLang === 'en' ? 'Export GPX' : '导出GPX';
+  $('exportGeoBtn').textContent = currentLang === 'en' ? 'Export GeoJSON' : '导出GeoJSON';
+  const elevSel = $('elevModeSelect');
+  if (elevSel && elevSel.options.length >= 3) {
+    elevSel.options[0].textContent = currentLang === 'en' ? 'Raw cumulative' : '原始累计（不过滤）';
+    elevSel.options[1].textContent = currentLang === 'en' ? 'Smoothed cumulative (no threshold)' : '平滑累计（无阈值）';
+    elevSel.options[2].textContent = currentLang === 'en' ? 'Smoothed + threshold' : '平滑 + 阈值累计';
+  }
+  const annoSel = $('annoType');
+  if (annoSel && annoSel.options.length >= 6) {
+    annoSel.options[0].textContent = currentLang === 'en' ? 'Start (Green)' : '起点（绿）';
+    annoSel.options[1].textContent = currentLang === 'en' ? 'End (Red)' : '终点（红）';
+    annoSel.options[2].textContent = currentLang === 'en' ? 'Camp (Blue)' : '营地（蓝）';
+    annoSel.options[3].textContent = currentLang === 'en' ? 'Supply (Orange)' : '补给点（橙）';
+    annoSel.options[4].textContent = currentLang === 'en' ? 'Risk (Purple)' : '风险点（紫）';
+    annoSel.options[5].textContent = currentLang === 'en' ? 'Note (Black)' : '普通标注（黑）';
+  }
+  const manual = document.querySelector('.manual-link');
+  if (manual) {
+    manual.textContent = t('manual');
+    manual.title = currentLang === 'en' ? 'Open user guide on GitHub' : '在 GitHub 打开使用说明';
+  }
+  const themeBtn = $('themeToggle');
+  if (themeBtn) {
+    themeBtn.title = currentLang === 'en' ? 'Toggle light/dark mode' : '切换浅色/深色模式';
+    themeBtn.setAttribute('aria-label', currentLang === 'en' ? 'Toggle light or dark mode' : '切换浅色或深色模式');
+  }
+  const boxesShared = document.querySelectorAll('.box.tool-shared');
+  if (boxesShared[0]) {
+    const b = boxesShared[0].querySelector('.row b');
+    if (b) b.textContent = t('projectTitle');
+    const s = boxesShared[0].querySelector('.row .hint');
+    if (s) s.textContent = t('projectLogin');
+    const hints = boxesShared[0].querySelectorAll('.hint');
+    if (hints[0]) hints[0].textContent = t('projectHint');
+    if ($('projectDropZone')) $('projectDropZone').innerHTML = t('dropOpen');
+    const p = boxesShared[0].querySelector('.privacy-note');
+    if (p) p.textContent = t('privacy');
+  }
+  if (boxesShared[1]) {
+    const b = boxesShared[1].querySelector('.row b');
+    if (b) b.textContent = t('importTitle');
+    const h = boxesShared[1].querySelector('.hint');
+    if (h) h.textContent = t('importHint');
+  }
+  const annoBox = document.querySelectorAll('.box.tool-analysis')[4];
+  if (annoBox) {
+    const b = annoBox.querySelector('.row b');
+    if (b) b.textContent = t('annoTitle');
+    const label = annoBox.querySelector('.label');
+    if (label) label.textContent = t('annoType');
+  }
+  const exportBox = document.querySelectorAll('.box.tool-analysis')[5];
+  if (exportBox) {
+    const b = exportBox.querySelector('.row b');
+    if (b) b.textContent = t('exportTitle');
+    const h = exportBox.querySelector('.hint');
+    if (h) h.textContent = t('exportHint');
+  }
+  renderAnnoList();
+  updateStats();
+}
 
 function applyTrackAsActive(t) {
   if (!t) return;
@@ -829,11 +1004,11 @@ function syncAnalysisTargetUI() {
   const sel = $('analysisTrackSelect');
   if (!sel) return;
   const currentValue = activeTrackId || '__current__';
-  sel.innerHTML = `<option value="__current__">当前工作轨迹（${activeSource || '未命名'}）</option>`;
+  sel.innerHTML = `<option value="__current__">${currentLang === 'en' ? 'Current working track' : '当前工作轨迹'}（${activeSource || (currentLang === 'en' ? 'Unnamed' : '未命名')}）</option>`;
   tracks.forEach((t) => {
     const op = document.createElement('option');
     op.value = t.id;
-    op.textContent = `导入轨迹：${t.name} (${t.route.length}点)`;
+    op.textContent = currentLang === 'en' ? `Imported: ${t.name} (${t.route.length} pts)` : `导入轨迹：${t.name} (${t.route.length}点)`;
     sel.appendChild(op);
   });
   sel.value = currentValue;
@@ -1066,6 +1241,7 @@ function serializeProject() {
       text: a.text,
       type: a.type || 'note',
       color: a.color || '#111827',
+      imageData: a.imageData || null,
       latlng: a.latlng,
       labelOffset: a.labelOffset || [0, -10],
       labelLatLng: a.labelLatLng || null
@@ -1153,6 +1329,7 @@ function restoreProject(obj) {
       text: a.text || '',
       type: a.type || 'note',
       color: a.color || '#111827',
+      imageData: typeof a.imageData === 'string' ? a.imageData : null,
       latlng: a.latlng,
       labelOffset: Array.isArray(a.labelOffset) ? a.labelOffset : [0, -10],
       labelLatLng: Array.isArray(a.labelLatLng) ? a.labelLatLng : null,
@@ -1170,10 +1347,10 @@ function restoreProject(obj) {
 }
 
 const map = L.map('map');
-const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom:19, attribution:'Tiles &copy; Esri'}).addTo(map);
-const topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {maxZoom:17, attribution:'&copy; OpenTopoMap'});
-const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19, attribution:'&copy; OpenStreetMap'});
-const hill = L.tileLayer('https://tiles.wmflabs.org/hillshading/{z}/{x}/{y}.png', {maxZoom:15, opacity:0.55, attribution:'&copy; Wikimedia hillshading'}).addTo(map);
+const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom:19, attribution:'Tiles &copy; Esri', crossOrigin: true}).addTo(map);
+const topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {maxZoom:17, attribution:'&copy; OpenTopoMap', crossOrigin: true});
+const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19, attribution:'&copy; OpenStreetMap', crossOrigin: true});
+const hill = L.tileLayer('https://tiles.wmflabs.org/hillshading/{z}/{x}/{y}.png', {maxZoom:15, opacity:0.55, attribution:'&copy; Wikimedia hillshading', crossOrigin: true}).addTo(map);
 
 const activeLayer = L.layerGroup().addTo(map);
 const segmentLayer = L.layerGroup().addTo(map);
@@ -1231,7 +1408,9 @@ function updateStats() {
     $('totalDist').textContent = '-';
     $('totalUp').textContent = '-';
     $('totalDown').textContent = '-';
-    $('methodText').textContent = '请先导入轨迹，再进行截取/拼接/标注';
+    $('methodText').textContent = currentLang === 'en'
+      ? 'Please import a track first, then clip/stitch/annotate.'
+      : '请先导入轨迹，再进行截取/拼接/标注';
     return;
   }
   const max = route.length - 1;
@@ -1241,9 +1420,13 @@ function updateStats() {
   $('totalDown').textContent = prefDown[max].toFixed(0) + ' m';
   const sw = Math.max(1, Math.min(25, Math.round(elevSmoothWindow) || 5));
   const modeText = elevCalcMode === 'raw'
-    ? '原始累计'
-    : (elevCalcMode === 'smooth' ? `平滑累计（窗口${sw}）` : `平滑+阈值累计（窗口${sw}，阈值${Number(elevThreshold).toFixed(1)}m）`);
-  $('methodText').textContent = `爬升算法：${modeText}`;
+    ? (currentLang === 'en' ? 'raw cumulative' : '原始累计')
+    : (elevCalcMode === 'smooth'
+      ? (currentLang === 'en' ? `smoothed cumulative (window ${sw})` : `平滑累计（窗口${sw}）`)
+      : (currentLang === 'en'
+        ? `smoothed + threshold (window ${sw}, threshold ${Number(elevThreshold).toFixed(1)}m)`
+        : `平滑+阈值累计（窗口${sw}，阈值${Number(elevThreshold).toFixed(1)}m）`));
+  $('methodText').textContent = currentLang === 'en' ? `Climb algorithm: ${modeText}` : `爬升算法：${modeText}`;
 }
 
 
@@ -1450,7 +1633,7 @@ function renderLiveProfile(startIdx, endIdx) {
   if (!route || route.length < 2 || !prefDist || prefDist.length !== route.length) {
     ctx.fillStyle = '#666';
     ctx.font = '13px sans-serif';
-    ctx.fillText('请先导入轨迹', 16, 26);
+    ctx.fillText(currentLang === 'en' ? 'Please import a track' : '请先导入轨迹', 16, 26);
     return;
   }
 
@@ -1458,7 +1641,7 @@ function renderLiveProfile(startIdx, endIdx) {
   if (!elev) {
     ctx.fillStyle = '#666';
     ctx.font = '13px sans-serif';
-    ctx.fillText('轨迹缺少海拔数据', 16, 26);
+    ctx.fillText(currentLang === 'en' ? 'Track has no elevation data' : '轨迹缺少海拔数据', 16, 26);
     return;
   }
 
@@ -1538,7 +1721,8 @@ function refreshAnnoMarkers() {
       fillOpacity: 0.95,
       weight: 2
     }).addTo(annoLayer);
-    marker.bindPopup(`<b>${a.type || '标注'}</b><br/>索引:${a.idx}<br/>${a.text || ''}`);
+    const imgHtml = a.imageData ? `<br/><img src="${a.imageData}" alt="标注图片" style="max-width:220px;max-height:160px;border-radius:6px;border:1px solid #e5e7eb;" />` : '';
+    marker.bindPopup(`<b>${a.type || '标注'}</b><br/>索引:${a.idx}<br/>${a.text || ''}${imgHtml}`);
     a.marker = marker;
 
     const labelPos = (Array.isArray(a.labelLatLng) && a.labelLatLng.length === 2) ? a.labelLatLng : a.latlng;
@@ -1789,55 +1973,96 @@ map.on('click', (e) => {
 let annoMode=false;
 $('addAnnoBtn').onclick = () => {
   annoMode=!annoMode;
-  $('addAnnoBtn').textContent = annoMode ? '点击地图添加中' : '添加标注';
+  $('addAnnoBtn').textContent = annoMode
+    ? (currentLang === 'en' ? 'Click map to add' : '点击地图添加中')
+    : t('addAnno');
 };
 
 function renderAnnoList() {
   const ul = $('annoList'); ul.innerHTML='';
   annos.forEach((a, i) => {
     const li = document.createElement('li');
-    li.innerHTML = `<span class='t'>#${i+1} [${a.idx}] <span style="color:${a.color || '#111827'}">●</span> ${a.text}</span>`;
-    const fly=document.createElement('button'); fly.textContent='定位'; fly.onclick=()=>{ map.setView(a.latlng,16); if (a.marker) a.marker.openPopup(); };
-    const left=document.createElement('button'); left.textContent='←'; left.onclick=()=>adjustAnnoOffset(i,-8,0);
-    const right=document.createElement('button'); right.textContent='→'; right.onclick=()=>adjustAnnoOffset(i,8,0);
-    const up=document.createElement('button'); up.textContent='↑'; up.onclick=()=>adjustAnnoOffset(i,0,-8);
-    const down=document.createElement('button'); down.textContent='↓'; down.onclick=()=>adjustAnnoOffset(i,0,8);
-    const del=document.createElement('button'); del.textContent='删除'; del.onclick=()=>{ annos.splice(i,1); refreshAnnoMarkers(); renderAnnoList(); };
-    li.append(fly,left,right,up,down,del); ul.appendChild(li);
+    const picTag = a.imageData ? t('noAnnoImage') : '';
+    li.innerHTML = `<span class='t'>#${i+1} [${a.idx}] <span style="color:${a.color || '#111827'}">●</span> ${a.text}${picTag}</span>`;
+    const fly=document.createElement('button'); fly.textContent=t('fly'); fly.onclick=()=>{ map.setView(a.latlng,16); if (a.marker) a.marker.openPopup(); };
+    const edit=document.createElement('button'); edit.textContent=t('edit'); edit.onclick=async ()=>{ await editAnno(i); };
+    const del=document.createElement('button'); del.textContent=t('del'); del.onclick=()=>{ annos.splice(i,1); refreshAnnoMarkers(); renderAnnoList(); };
+    li.append(fly,edit,del); ul.appendChild(li);
   });
 }
 
-function adjustAnnoOffset(idx, dx, dy) {
-  const a = annos[idx];
-  if (!a) return;
-  const base = (Array.isArray(a.labelLatLng) && a.labelLatLng.length === 2) ? a.labelLatLng : a.latlng;
-  if (!Array.isArray(base) || base.length < 2) return;
-  const p = map.latLngToContainerPoint([base[0], base[1]]);
-  const p2 = L.point(p.x + dx, p.y + dy);
-  const ll = map.containerPointToLatLng(p2);
-  a.labelLatLng = [ll.lat, ll.lng];
-  refreshAnnoMarkers();
-  renderAnnoList();
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(typeof fr.result === 'string' ? fr.result : null);
+    fr.onerror = () => reject(fr.error || new Error('读取图片失败'));
+    fr.readAsDataURL(file);
+  });
 }
 
-function addAnno(latlng) {
+async function addAnno(latlng) {
   const idx = nearestIdx(latlng, route);
   const pt = route[idx];
   const typeRaw = $('annoType') ? $('annoType').value : 'note|#111827';
   const [annoType, annoColor] = typeRaw.split('|');
-  const txt = prompt('输入标注内容：', `标注@${idx}`);
+  const txt = prompt(currentLang === 'en' ? 'Enter annotation text:' : '输入标注内容：', `标注@${idx}`);
   if (!txt || !txt.trim()) return;
+  let imageData = null;
+  if (confirm(t('addImageConfirm'))) {
+    imageData = await pickAnnoImageData();
+  }
   annos.push({
     idx,
     text: txt.trim(),
     type: annoType || 'note',
     color: annoColor || '#111827',
+    imageData,
     latlng: pt,
     labelOffset: [0, -10],
     labelLatLng: pt,
     marker: null,
     labelMarker: null
   });
+  refreshAnnoMarkers();
+  renderAnnoList();
+}
+
+async function pickAnnoImageData() {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.style.display = 'none';
+    document.body.appendChild(input);
+    input.onchange = async () => {
+      const f = input.files && input.files[0];
+      input.remove();
+      if (!f) { resolve(null); return; }
+      if (!f.type.startsWith('image/')) { alert(t('chooseImage')); resolve(null); return; }
+      try {
+        const d = await fileToDataUrl(f);
+        resolve(d);
+      } catch (err) {
+        alert(`${t('readImgFail')}: ` + (err.message || err));
+        resolve(null);
+      }
+    };
+    input.click();
+  });
+}
+
+async function editAnno(i) {
+  const a = annos[i];
+  if (!a) return;
+  const n = prompt(t('editTextPrompt'), a.text || '');
+  if (n === null) return;
+  a.text = (n || '').trim();
+  const action = prompt(t('imageActionPrompt'), a.imageData ? 'keep' : 'replace');
+  if (action !== null) {
+    const ac = String(action).trim().toLowerCase();
+    if (ac === 'remove') a.imageData = null;
+    else if (ac === 'replace') a.imageData = await pickAnnoImageData();
+  }
   refreshAnnoMarkers();
   renderAnnoList();
 }
@@ -1890,12 +2115,12 @@ $('autoSplitBtn').onclick = () => {
 
 function exportElevationChartPng() {
   if (!route || route.length < 2) {
-    alert('当前没有可分析轨迹');
+    alert(t('noRouteAnalyze'));
     return;
   }
   const elev = normalizeElevationForExport(route, ele);
   if (!elev) {
-    alert('当前轨迹没有可用海拔数据');
+    alert(t('noEle'));
     return;
   }
   const dist = prefDist && prefDist.length === route.length ? prefDist : (() => {
@@ -1993,13 +2218,14 @@ function exportElevationChartPng() {
 }
 
 
+
 $('exportElevationBtn').onclick = () => {
   exportElevationChartPng();
 };
 
 $('exportKmlBtn').onclick = () => {
   if (!route || route.length < 2) {
-    alert('当前没有可导出的轨迹');
+    alert(t('noRouteExport'));
     return;
   }
   const name = safeName(activeSource || 'route_export');
@@ -2009,7 +2235,7 @@ $('exportKmlBtn').onclick = () => {
 
 $('exportGpxBtn').onclick = () => {
   if (!route || route.length < 2) {
-    alert('当前没有可导出的轨迹');
+    alert(t('noRouteExport'));
     return;
   }
   const name = safeName(activeSource || 'route_export');
@@ -2019,7 +2245,7 @@ $('exportGpxBtn').onclick = () => {
 
 $('exportGeoBtn').onclick = () => {
   if (!route || route.length < 2) {
-    alert('当前没有可导出的轨迹');
+    alert(t('noRouteExport'));
     return;
   }
   const name = safeName(activeSource || 'route_export');
@@ -2245,7 +2471,7 @@ function applyThemeDark(isDark) {
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute('content', isDark ? '#0f172a' : '#45D1B3');
   const btn = $('themeToggle');
-  if (btn) btn.textContent = isDark ? '浅色' : '深色';
+  if (btn) btn.textContent = isDark ? t('themeLight') : t('themeDark');
 }
 function readInitialDark() {
   const s = localStorage.getItem(THEME_KEY);
@@ -2266,6 +2492,16 @@ $('themeToggle').onclick = () => {
   localStorage.setItem(THEME_KEY, !isDark ? 'dark' : 'light');
 };
 initTheme();
+if ($('langToggle')) {
+  $('langToggle').addEventListener('change', (e) => {
+    currentLang = ['zh', 'en'].includes(e.target.value) ? e.target.value : 'zh';
+    localStorage.setItem(LS_LANG_KEY, currentLang);
+    applyLanguage();
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    applyThemeDark(isDark);
+  });
+}
+applyLanguage();
 
 tryOfferLocalRestore();
 </script>
