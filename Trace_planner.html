@@ -639,8 +639,8 @@
     </div>
 
     <div class="box tool-shared">
-      <div class="row"><b>工程 / 项目</b> <span class="hint">（无需登录）</span></div>
-      <div class="hint">下载 JSON 可换电脑打开；「本浏览器」仅本机暂存，清缓存会丢。</div>
+      <div class="row"><b id="projectTitleText">工程 / 项目</b> <span id="projectLoginText" class="hint">（无需登录）</span></div>
+      <div id="projectHintText" class="hint">下载 JSON 可换电脑打开；「本浏览器」仅本机暂存，清缓存会丢。</div>
       <div class="btns">
         <button id="saveProjectBtn" type="button">下载工程 JSON</button>
         <button id="loadProjectBtn" type="button">打开工程 JSON</button>
@@ -792,7 +792,7 @@
       <div class="btns">
         <button id="exportElevationBtn">导出爬升下降图PNG</button>
       </div>
-      <div class="hint">工程请在上方「工程 / 项目」中下载或打开。</div>
+      <div id="exportHintText" class="hint">工程请在上方「工程 / 项目」中下载或打开。</div>
     </div>
 
   </div>
@@ -917,6 +917,7 @@ const I18N = {
     annoTypeLabelSupply: '补给点（橙）',
     annoTypeLabelRisk: '风险点（紫）',
     annoTypeLabelNote: '普通标注（黑）'
+    ,addToBasket: '加入拼接篮子'
     ,currentTrackTitle: '当前分析轨迹'
     ,trackSource: '轨迹来源'
     ,trackPoints: '轨迹点数'
@@ -1044,6 +1045,7 @@ const I18N = {
     annoTypeLabelSupply: 'Supply (Orange)',
     annoTypeLabelRisk: 'Risk (Purple)',
     annoTypeLabelNote: 'Note (Black)'
+    ,addToBasket: 'Add to basket'
     ,currentTrackTitle: 'Current Analysis Track'
     ,trackSource: 'Source'
     ,trackPoints: 'Points'
@@ -1100,10 +1102,15 @@ function applyLanguage() {
   $('loadProjectBtn').textContent = t('loadProject');
   $('saveLocalBtn').textContent = t('saveLocal');
   $('loadLocalBtn').textContent = t('loadLocal');
+  if ($('projectTitleText')) $('projectTitleText').textContent = t('projectTitle');
+  if ($('projectLoginText')) $('projectLoginText').textContent = t('projectLogin');
+  if ($('projectHintText')) $('projectHintText').textContent = t('projectHint');
+  if ($('exportHintText')) $('exportHintText').textContent = t('exportHint');
   $('addAnnoBtn').textContent = annoMode
     ? t('clickMapToAdd')
     : t('addAnno');
   $('clearAnnoBtn').textContent = t('clearAnno');
+  if ($('addClipBtn')) $('addClipBtn').textContent = t('addToBasket');
   const pickBtn = $('pickBtn');
   if (pickBtn && !pickMode) pickBtn.textContent = t('pickStartEnd');
   $('exportElevationBtn').textContent = t('exportElev');
@@ -1140,12 +1147,6 @@ function applyLanguage() {
   }
   const boxesShared = document.querySelectorAll('.box.tool-shared');
   if (boxesShared[0]) {
-    const b = boxesShared[0].querySelector('.row b');
-    if (b) b.textContent = t('projectTitle');
-    const s = boxesShared[0].querySelector('.row .hint');
-    if (s) s.textContent = t('projectLogin');
-    const hints = boxesShared[0].querySelectorAll('.hint');
-    if (hints[0]) hints[0].textContent = t('projectHint');
     if ($('projectDropZone')) $('projectDropZone').innerHTML = t('dropOpen');
     const p = boxesShared[0].querySelector('.privacy-note');
     if (p) p.textContent = t('privacy');
