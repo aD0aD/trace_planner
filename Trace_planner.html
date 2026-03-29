@@ -2104,16 +2104,18 @@ function escapeHtmlAttr(s) {
     .replace(/>/g, '&gt;');
 }
 
-/** 不依赖命名空间前缀，按 localName 遍历（兼容两步路等 KML） */
+/** 不依赖命名空间前缀，按 localName 遍历（兼容两步路等 KML）；用 childNodes 避免部分环境下 XML 的 children 不完整 */
 function kmlDeepByLocalName(root, localName) {
   const out = [];
   const top = root && root.nodeType === 9 ? root.documentElement : root;
   if (!top) return out;
   (function walk(el) {
-    if (el.localName === localName) out.push(el);
-    const ch = el.children;
+    if (el.nodeType === 1 && el.localName === localName) out.push(el);
+    const ch = el.childNodes;
     if (!ch) return;
-    for (let i = 0; i < ch.length; i++) walk(ch[i]);
+    for (let i = 0; i < ch.length; i++) {
+      if (ch[i].nodeType === 1) walk(ch[i]);
+    }
   })(top);
   return out;
 }
@@ -2279,10 +2281,23 @@ function placemarkSuppressionKey(lat, lng) {
   return `${Number(lat).toFixed(6)},${Number(lng).toFixed(6)}`;
 }
 
+/** 当前工作 route 是否与某条导入轨迹完全一致（用于 activeTrackId 为空时仍能合并标注） */
+function routeMatchesImportedTrack(r, tr) {
+  if (!r || !tr || !Array.isArray(tr.route) || r.length !== tr.route.length || r.length < 2) return false;
+  for (let i = 0; i < r.length; i++) {
+    if (r[i][0] !== tr.route[i][0] || r[i][1] !== tr.route[i][1]) return false;
+  }
+  return true;
+}
+
 /** 将导入轨迹中的点标注（KML Placemark / GPX wpt）合并到当前 annos */
 function mergeImportedPlacemarksIntoAnnos() {
-  if (!activeTrackId || !route || route.length < 2) return;
-  const t = tracks.find((x) => x.id === activeTrackId);
+  if (!route || route.length < 2) return;
+  let t = activeTrackId ? tracks.find((x) => x.id === activeTrackId) : null;
+  if (!t) {
+    t = tracks.find((tr) => Array.isArray(tr.placemarks) && tr.placemarks.length && routeMatchesImportedTrack(route, tr));
+  }
+  if (!t) return;
   const list = t && Array.isArray(t.placemarks) ? t.placemarks : [];
   if (!list.length) return;
   const suppressed = new Set((t.suppressedPlacemarkKeys || []).map(String));
@@ -2437,8 +2452,9 @@ $('trackInput').addEventListener('change', async (e) => {
     }
   }
   renderTrackList();
-  if ((!route || route.length < 2) && tracks.length > 0) {
-    const t = tracks[0];
+  // 每次导入都切换到「本次最后一条」为分析目标，否则在已有工作轨迹时 activeTrackId 仍指向旧轨迹，标注不会合并
+  if (tracks.length > 0) {
+    const t = tracks[tracks.length - 1];
     applyTrackAsActive(t);
     redrawActiveRoute();
     renderTrackList();
