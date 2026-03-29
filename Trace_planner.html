@@ -2335,17 +2335,54 @@ function mergeImportedPlacemarksIntoAnnos() {
   renderAnnoList();
 }
 
+/** 收集所有属于 LineString 的 coordinates 节点（比先找 LineString 再子查更兼容各浏览器 XML 实现） */
+function kmlLineStringCoordinateNodes(xml) {
+  const nodes = [];
+  const seen = new Set();
+  const tryAdd = (n) => {
+    const par = n && n.parentNode;
+    if (!par || par.localName !== 'LineString') return;
+    if (seen.has(n)) return;
+    seen.add(n);
+    nodes.push(n);
+  };
+  const ns = 'http://www.opengis.net/kml/2.2';
+  const byNs = xml.getElementsByTagNameNS(ns, 'coordinates');
+  if (byNs && byNs.length) {
+    for (let i = 0; i < byNs.length; i++) tryAdd(byNs[i]);
+  }
+  if (!nodes.length) {
+    const byTag = xml.getElementsByTagName('coordinates');
+    if (byTag && byTag.length) {
+      for (let i = 0; i < byTag.length; i++) tryAdd(byTag[i]);
+    }
+  }
+  if (!nodes.length) {
+    kmlDeepByLocalName(xml, 'LineString').forEach((ls) => {
+      kmlElementsByTag(ls, 'coordinates').forEach((c) => {
+        if (!seen.has(c)) {
+          seen.add(c);
+          nodes.push(c);
+        }
+      });
+    });
+  }
+  return nodes;
+}
+
 function parseKmlText(text, name) {
   const xml = new DOMParser().parseFromString(text, 'text/xml');
+  const pe = xml.getElementsByTagName('parsererror')[0]
+    || (xml.documentElement && xml.documentElement.localName === 'parsererror' ? xml.documentElement : null);
+  if (pe) {
+    throw new Error(currentLang === 'en' ? `${name}: invalid XML` : `${name}：XML 解析失败`);
+  }
   const route = [];
   const ele = [];
   const placemarks = extractKmlPointPlacemarks(xml);
 
-  // 1) 优先收集所有 LineString 坐标（兼容多段轨迹；用 localName 遍历避免命名空间下 querySelector 失效）
-  const lineNodes = [];
-  kmlDeepByLocalName(xml, 'LineString').forEach((ls) => {
-    kmlElementsByTag(ls, 'coordinates').forEach((c) => lineNodes.push(c));
-  });
+  // 1) 收集所有 LineString 下的 coordinates（多段轨迹会多段拼接）
+  const lineNodes = kmlLineStringCoordinateNodes(xml);
   lineNodes.forEach((node) => {
     const raw = (node.textContent || '').trim();
     if (!raw) return;
