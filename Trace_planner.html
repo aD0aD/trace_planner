@@ -916,9 +916,12 @@ const I18N = {
     annoTypeLabelCamp: '营地（蓝）',
     annoTypeLabelSupply: '补给点（橙）',
     annoTypeLabelRisk: '风险点（紫）',
-    annoTypeLabelNote: '普通标注（黑）'
-    ,addToBasket: '加入拼接篮子'
-    ,currentTrackTitle: '当前分析轨迹'
+    annoTypeLabelNote: '普通标注（黑）',
+    annoIdxLabel: '索引',
+    annoImageAlt: '标注图片',
+    importedPlacemarkTag: '（导入）',
+    addToBasket: '加入拼接篮子',
+    currentTrackTitle: '当前分析轨迹'
     ,trackSource: '轨迹来源'
     ,trackPoints: '轨迹点数'
     ,trackTotalDist: '总距离'
@@ -1044,9 +1047,12 @@ const I18N = {
     annoTypeLabelCamp: 'Camp (Blue)',
     annoTypeLabelSupply: 'Supply (Orange)',
     annoTypeLabelRisk: 'Risk (Purple)',
-    annoTypeLabelNote: 'Note (Black)'
-    ,addToBasket: 'Add to basket'
-    ,currentTrackTitle: 'Current Analysis Track'
+    annoTypeLabelNote: 'Note (Black)',
+    annoIdxLabel: 'Index',
+    annoImageAlt: 'Annotation image',
+    importedPlacemarkTag: '(imported)',
+    addToBasket: 'Add to basket',
+    currentTrackTitle: 'Current Analysis Track'
     ,trackSource: 'Source'
     ,trackPoints: 'Points'
     ,trackTotalDist: 'Total Distance'
@@ -1235,6 +1241,7 @@ function applyLanguage() {
   }
   if (typeof renderLayerControl === 'function') renderLayerControl();
   renderAnnoList();
+  if (typeof refreshAnnoMarkers === 'function') refreshAnnoMarkers();
   updateStats();
 }
 
@@ -1496,14 +1503,17 @@ function serializeProject() {
       imageData: a.imageData || null,
       latlng: a.latlng,
       labelOffset: a.labelOffset || [0, -10],
-      labelLatLng: a.labelLatLng || null
+      labelLatLng: a.labelLatLng || null,
+      fromImport: !!a.fromImport
     })),
     tracks: tracks.map(t => ({
       id: t.id,
       name: t.name,
       route: t.route,
       ele: t.ele,
-      color: t.color
+      color: t.color,
+      placemarks: t.placemarks || [],
+      suppressedPlacemarkKeys: t.suppressedPlacemarkKeys || []
     }))
   };
 }
@@ -1549,7 +1559,9 @@ function restoreProject(obj) {
       prefUp: pref.prefUp,
       prefDown: pref.prefDown,
       color,
-      layer
+      layer,
+      placemarks: Array.isArray(t.placemarks) ? t.placemarks : [],
+      suppressedPlacemarkKeys: Array.isArray(t.suppressedPlacemarkKeys) ? t.suppressedPlacemarkKeys.slice() : []
     });
   });
 
@@ -1571,7 +1583,7 @@ function restoreProject(obj) {
   clips.length = 0;
   (obj.clips || []).forEach(c => clips.push(c));
 
-  redrawActiveRoute();
+  redrawActiveRoute(true);
 
   annos.length = 0;
   (obj.annotations || []).forEach(a => {
@@ -1586,9 +1598,11 @@ function restoreProject(obj) {
       labelOffset: Array.isArray(a.labelOffset) ? a.labelOffset : [0, -10],
       labelLatLng: Array.isArray(a.labelLatLng) ? a.labelLatLng : null,
       marker: null,
-      labelMarker: null
+      labelMarker: null,
+      fromImport: !!a.fromImport
     });
   });
+  if (!annos.length && activeTrackId) mergeImportedPlacemarksIntoAnnos();
   refreshAnnoMarkers();
 
   syncElevControlsFromState();
@@ -1694,7 +1708,7 @@ function updateStats() {
 
 
 
-function redrawActiveRoute() {
+function redrawActiveRoute(skipImportedPlacemarkMerge) {
   activeLayer.clearLayers();
   segmentLayer.clearLayers();
   annoLayer.clearLayers();
@@ -1733,6 +1747,7 @@ function redrawActiveRoute() {
   updateSegment();
   renderLiveProfile(Number($('startRange').value), Number($('endRange').value));
   updateStats();
+  if (!skipImportedPlacemarkMerge) mergeImportedPlacemarksIntoAnnos();
 }
 
 function segStats(i,j) {
@@ -1972,6 +1987,19 @@ function renderLiveProfile(startIdx, endIdx) {
   ctx.fillText(t('profileElevAxis'), 6, y1 - 2);
 }
 
+function annoTypePopupLabel(a) {
+  const map = {
+    start: 'annoTypeLabelStart',
+    end: 'annoTypeLabelEnd',
+    camp: 'annoTypeLabelCamp',
+    supply: 'annoTypeLabelSupply',
+    risk: 'annoTypeLabelRisk',
+    note: 'annoTypeLabelNote'
+  };
+  const k = map[a.type];
+  return k ? t(k) : (a.type ? String(a.type) : t('annoTypeLabelNote'));
+}
+
 function refreshAnnoMarkers() {
   annoLayer.clearLayers();
   annos.forEach((a) => {
@@ -1984,8 +2012,9 @@ function refreshAnnoMarkers() {
       fillOpacity: 0.95,
       weight: 2
     }).addTo(annoLayer);
-    const imgHtml = a.imageData ? `<br/><img src="${a.imageData}" alt="标注图片" style="max-width:220px;max-height:160px;border-radius:6px;border:1px solid #e5e7eb;" />` : '';
-    marker.bindPopup(`<b>${a.type || '标注'}</b><br/>索引:${a.idx}<br/>${a.text || ''}${imgHtml}`);
+    const imgHtml = a.imageData ? `<br/><img src="${a.imageData}" alt="${t('annoImageAlt')}" style="max-width:220px;max-height:160px;border-radius:6px;border:1px solid #e5e7eb;" />` : '';
+    const importTag = a.fromImport ? ` ${t('importedPlacemarkTag')}` : '';
+    marker.bindPopup(`<b>${annoTypePopupLabel(a)}</b>${importTag}<br/>${t('annoIdxLabel')}: ${a.idx}<br/>${a.text || ''}${imgHtml}`);
     a.marker = marker;
 
     const labelPos = (Array.isArray(a.labelLatLng) && a.labelLatLng.length === 2) ? a.labelLatLng : a.latlng;
@@ -2029,10 +2058,140 @@ function renderTrackList() {
   });
 }
 
+function stripHtmlSimple(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.innerHTML = s;
+  return (d.textContent || '').replace(/\s+/g, ' ').trim();
+}
+
+/** KML aabbggrr or #rrggbb → #rrggbb */
+function kmlIconColorToHex(kmlColor) {
+  if (!kmlColor || typeof kmlColor !== 'string') return null;
+  const c = kmlColor.trim().toLowerCase().replace(/^#/, '').replace(/^0x/, '');
+  if (c.length === 6 && /^[0-9a-f]+$/.test(c)) return `#${c}`;
+  if (c.length === 8 && /^[0-9a-f]+$/.test(c)) {
+    const bb = c.slice(2, 4);
+    const gg = c.slice(4, 6);
+    const rr = c.slice(6, 8);
+    return `#${rr}${gg}${bb}`;
+  }
+  return null;
+}
+
+function kmlElementsByTag(root, localName) {
+  const ns = 'http://www.opengis.net/kml/2.2';
+  const byNs = root.getElementsByTagNameNS(ns, localName);
+  if (byNs && byNs.length) return Array.from(byNs);
+  return Array.from(root.getElementsByTagName(localName));
+}
+
+/** 从 KML 提取 Point 型标注（与 LineString/gx:Track 轨迹点分开） */
+function extractKmlPointPlacemarks(xml) {
+  const out = [];
+  kmlElementsByTag(xml, 'Placemark').forEach((pm) => {
+    const pointEls = kmlElementsByTag(pm, 'Point');
+    const coordNodes = [];
+    pointEls.forEach((pt) => {
+      kmlElementsByTag(pt, 'coordinates').forEach((c) => coordNodes.push(c));
+    });
+    if (!coordNodes.length) return;
+    const nameEl = pm.getElementsByTagName('name')[0];
+    const descEl = pm.getElementsByTagName('description')[0];
+    const name = stripHtmlSimple(nameEl ? nameEl.textContent : '');
+    const description = stripHtmlSimple(descEl ? descEl.textContent : '');
+    let colorHex = null;
+    const iconStyles = kmlElementsByTag(pm, 'IconStyle');
+    for (let is = 0; is < iconStyles.length && !colorHex; is++) {
+      const cols = kmlElementsByTag(iconStyles[is], 'color');
+      if (cols[0] && cols[0].textContent) colorHex = kmlIconColorToHex(cols[0].textContent.trim());
+    }
+
+    coordNodes.forEach((node) => {
+      const raw = (node.textContent || '').trim();
+      if (!raw) return;
+      const first = raw.split(/[\s\n]+/)[0];
+      const parts = first.split(',');
+      if (parts.length < 2) return;
+      const lon = Number(parts[0]);
+      const lat = Number(parts[1]);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+      const z = parts.length >= 3 && Number.isFinite(Number(parts[2])) ? Number(parts[2]) : null;
+      out.push({
+        lat,
+        lng: lon,
+        z,
+        name,
+        description,
+        color: colorHex
+      });
+    });
+  });
+  return out;
+}
+
+function parseGpxWaypoints(xml) {
+  const out = [];
+  xml.querySelectorAll('wpt').forEach((w) => {
+    const lat = Number(w.getAttribute('lat'));
+    const lon = Number(w.getAttribute('lon'));
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+    const ne = w.getElementsByTagName('name')[0];
+    const de = w.getElementsByTagName('desc')[0];
+    const ee = w.getElementsByTagName('ele')[0];
+    const name = stripHtmlSimple(ne ? ne.textContent : '');
+    const description = stripHtmlSimple(de ? de.textContent : '');
+    const z = ee && Number.isFinite(Number(ee.textContent)) ? Number(ee.textContent) : null;
+    out.push({ lat, lng: lon, z, name, description, color: null });
+  });
+  return out;
+}
+
+function placemarkSuppressionKey(lat, lng) {
+  return `${Number(lat).toFixed(6)},${Number(lng).toFixed(6)}`;
+}
+
+/** 将导入轨迹中的点标注（KML Placemark / GPX wpt）合并到当前 annos */
+function mergeImportedPlacemarksIntoAnnos() {
+  if (!activeTrackId || !route || route.length < 2) return;
+  const t = tracks.find((x) => x.id === activeTrackId);
+  const list = t && Array.isArray(t.placemarks) ? t.placemarks : [];
+  if (!list.length) return;
+  const suppressed = new Set((t.suppressedPlacemarkKeys || []).map(String));
+  list.forEach((pm, i) => {
+    if (!Number.isFinite(pm.lat) || !Number.isFinite(pm.lng)) return;
+    const key = placemarkSuppressionKey(pm.lat, pm.lng);
+    if (suppressed.has(key)) return;
+    const latlng = [pm.lat, pm.lng];
+    const idx = nearestIdx({ lat: pm.lat, lng: pm.lng }, route);
+    let text = (pm.name && String(pm.name).trim()) ? String(pm.name).trim() : '';
+    if (!text && pm.description && String(pm.description).trim()) {
+      text = String(pm.description).trim().slice(0, 200);
+    }
+    if (!text) text = currentLang === 'en' ? `Waypoint ${i + 1}` : `途经点${i + 1}`;
+    annos.push({
+      idx,
+      text,
+      type: 'note',
+      color: pm.color || '#2563eb',
+      imageData: null,
+      latlng,
+      labelOffset: [0, -10],
+      labelLatLng: latlng,
+      marker: null,
+      labelMarker: null,
+      fromImport: true
+    });
+  });
+  refreshAnnoMarkers();
+  renderAnnoList();
+}
+
 function parseKmlText(text, name) {
   const xml = new DOMParser().parseFromString(text, 'text/xml');
   const route = [];
   const ele = [];
+  const placemarks = extractKmlPointPlacemarks(xml);
 
   // 1) 优先收集所有 LineString 坐标（兼容多段轨迹）
   const lineNodes = Array.from(xml.querySelectorAll('LineString coordinates'));
@@ -2081,7 +2240,7 @@ function parseKmlText(text, name) {
   }
 
   if (cleanRoute.length < 2) throw new Error(currentLang === 'en' ? `${name}: no valid route (may contain only points)` : `${name} 无有效轨迹（可能只有点标注）`);
-  return {name, route: cleanRoute, ele: cleanEle};
+  return {name, route: cleanRoute, ele: cleanEle, placemarks};
 }
 
 function parseGpxText(text, name) {
@@ -2095,8 +2254,9 @@ function parseGpxText(text, name) {
     const e = p.querySelector('ele');
     ele.push(e ? Number(e.textContent) : null);
   });
+  const placemarks = parseGpxWaypoints(xml);
   if (route.length<2) throw new Error(currentLang === 'en' ? `${name}: no valid coordinates` : `${name} 无有效坐标`);
-  return {name, route, ele};
+  return {name, route, ele, placemarks};
 }
 
 async function parseFile(file) {
@@ -2123,7 +2283,19 @@ $('trackInput').addEventListener('change', async (e) => {
       const pref = computePrefix(parsed.route, parsed.ele);
       const color = palette[tracks.length % palette.length];
       const layer = L.polyline(parsed.route, {color, weight:2, opacity:0.8}).addTo(importedLayer);
-      tracks.push({id: crypto.randomUUID(), name: parsed.name, route: parsed.route, ele: parsed.ele, prefDist: pref.prefDist, prefUp: pref.prefUp, prefDown: pref.prefDown, color, layer});
+      tracks.push({
+        id: crypto.randomUUID(),
+        name: parsed.name,
+        route: parsed.route,
+        ele: parsed.ele,
+        prefDist: pref.prefDist,
+        prefUp: pref.prefUp,
+        prefDown: pref.prefDown,
+        color,
+        layer,
+        placemarks: parsed.placemarks || [],
+        suppressedPlacemarkKeys: []
+      });
     } catch (err) {
       alert((currentLang === 'en' ? 'Import failed: ' : '导入失败: ') + (err.message || err));
     }
@@ -2244,10 +2416,20 @@ function renderAnnoList() {
   annos.forEach((a, i) => {
     const li = document.createElement('li');
     const picTag = a.imageData ? t('noAnnoImage') : '';
-    li.innerHTML = `<span class='t'>#${i+1} [${a.idx}] <span style="color:${a.color || '#111827'}">●</span> ${a.text}${picTag}</span>`;
+    const impTag = a.fromImport ? ` ${t('importedPlacemarkTag')}` : '';
+    li.innerHTML = `<span class='t'>#${i+1} [${a.idx}] <span style="color:${a.color || '#111827'}">●</span> ${a.text}${picTag}${impTag}</span>`;
     const fly=document.createElement('button'); fly.textContent=t('fly'); fly.onclick=()=>{ map.setView(a.latlng,16); if (a.marker) a.marker.openPopup(); };
     const edit=document.createElement('button'); edit.textContent=t('edit'); edit.onclick=async ()=>{ await editAnno(i); };
-    const del=document.createElement('button'); del.textContent=t('del'); del.onclick=()=>{ annos.splice(i,1); refreshAnnoMarkers(); renderAnnoList(); };
+    const del=document.createElement('button'); del.textContent=t('del'); del.onclick=()=>{
+      if (a.fromImport && activeTrackId) {
+        const tr = tracks.find((x) => x.id === activeTrackId);
+        if (tr && Array.isArray(a.latlng) && a.latlng.length >= 2) {
+          if (!tr.suppressedPlacemarkKeys) tr.suppressedPlacemarkKeys = [];
+          tr.suppressedPlacemarkKeys.push(placemarkSuppressionKey(a.latlng[0], a.latlng[1]));
+        }
+      }
+      annos.splice(i,1); refreshAnnoMarkers(); renderAnnoList();
+    };
     li.append(fly,edit,del); ul.appendChild(li);
   });
 }
@@ -2329,6 +2511,10 @@ async function editAnno(i) {
 }
 
 $('clearAnnoBtn').onclick = () => {
+  if (activeTrackId) {
+    const tr = tracks.find((x) => x.id === activeTrackId);
+    if (tr) tr.suppressedPlacemarkKeys = [];
+  }
   annos.length=0; refreshAnnoMarkers(); renderAnnoList();
 };
 
