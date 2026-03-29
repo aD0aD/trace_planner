@@ -919,6 +919,7 @@ const I18N = {
     annoTypeLabelNote: '普通标注（黑）',
     annoIdxLabel: '索引',
     annoImageAlt: '标注图片',
+    annoOpenLink: '打开链接/图片',
     importedPlacemarkTag: '（导入）',
     addToBasket: '加入拼接篮子',
     currentTrackTitle: '当前分析轨迹'
@@ -1050,6 +1051,7 @@ const I18N = {
     annoTypeLabelNote: 'Note (Black)',
     annoIdxLabel: 'Index',
     annoImageAlt: 'Annotation image',
+    annoOpenLink: 'Open link / image',
     importedPlacemarkTag: '(imported)',
     addToBasket: 'Add to basket',
     currentTrackTitle: 'Current Analysis Track'
@@ -1501,6 +1503,8 @@ function serializeProject() {
       type: a.type || 'note',
       color: a.color || '#111827',
       imageData: a.imageData || null,
+      imageUrl: typeof a.imageUrl === 'string' ? a.imageUrl : null,
+      linkUrl: typeof a.linkUrl === 'string' ? a.linkUrl : null,
       latlng: a.latlng,
       labelOffset: a.labelOffset || [0, -10],
       labelLatLng: a.labelLatLng || null,
@@ -1594,6 +1598,8 @@ function restoreProject(obj) {
       type: a.type || 'note',
       color: a.color || '#111827',
       imageData: typeof a.imageData === 'string' ? a.imageData : null,
+      imageUrl: typeof a.imageUrl === 'string' ? a.imageUrl : null,
+      linkUrl: typeof a.linkUrl === 'string' ? a.linkUrl : null,
       latlng: a.latlng,
       labelOffset: Array.isArray(a.labelOffset) ? a.labelOffset : [0, -10],
       labelLatLng: Array.isArray(a.labelLatLng) ? a.labelLatLng : null,
@@ -2012,9 +2018,18 @@ function refreshAnnoMarkers() {
       fillOpacity: 0.95,
       weight: 2
     }).addTo(annoLayer);
-    const imgHtml = a.imageData ? `<br/><img src="${a.imageData}" alt="${t('annoImageAlt')}" style="max-width:220px;max-height:160px;border-radius:6px;border:1px solid #e5e7eb;" />` : '';
+    let mediaHtml = '';
+    if (a.imageData) {
+      mediaHtml = `<br/><img src="${escapeHtmlAttr(a.imageData)}" alt="${escapeHtmlAttr(t('annoImageAlt'))}" style="max-width:220px;max-height:160px;border-radius:6px;border:1px solid #e5e7eb;" />`;
+    } else if (a.imageUrl) {
+      const open = a.linkUrl || a.imageUrl;
+      mediaHtml = `<br/><a href="${escapeHtmlAttr(open)}" target="_blank" rel="noopener noreferrer">${t('annoOpenLink')}</a>`;
+      mediaHtml += `<br/><img src="${escapeHtmlAttr(a.imageUrl)}" alt="" style="max-width:220px;max-height:200px;border-radius:6px;border:1px solid #e5e7eb;" referrerpolicy="no-referrer" />`;
+    } else if (a.linkUrl) {
+      mediaHtml = `<br/><a href="${escapeHtmlAttr(a.linkUrl)}" target="_blank" rel="noopener noreferrer">${t('annoOpenLink')}</a>`;
+    }
     const importTag = a.fromImport ? ` ${t('importedPlacemarkTag')}` : '';
-    marker.bindPopup(`<b>${annoTypePopupLabel(a)}</b>${importTag}<br/>${t('annoIdxLabel')}: ${a.idx}<br/>${a.text || ''}${imgHtml}`);
+    marker.bindPopup(`<b>${annoTypePopupLabel(a)}</b>${importTag}<br/>${t('annoIdxLabel')}: ${a.idx}<br/>${a.text || ''}${mediaHtml}`);
     a.marker = marker;
 
     const labelPos = (Array.isArray(a.labelLatLng) && a.labelLatLng.length === 2) ? a.labelLatLng : a.latlng;
@@ -2065,6 +2080,102 @@ function stripHtmlSimple(s) {
   return (d.textContent || '').replace(/\s+/g, ' ').trim();
 }
 
+/** 从 KML description 的 HTML 中提取图片链接、跳转链接（如两步路 img 外链） */
+function extractKmlDescriptionMedia(raw) {
+  if (!raw || typeof raw !== 'string') {
+    return { imageUrl: null, linkUrl: null, plainText: '' };
+  }
+  const srcM = raw.match(/<img[^>]+src\s*=\s*["']([^"']+)["']/i);
+  const hrefM = raw.match(/<a[^>]+href\s*=\s*["']([^"']*)["']/i);
+  let imageUrl = srcM && srcM[1] ? srcM[1].trim() : null;
+  let linkUrl = hrefM && hrefM[1] != null ? hrefM[1].trim() : null;
+  if (linkUrl === '' || linkUrl === '#') linkUrl = null;
+  if (!linkUrl && imageUrl && /^https?:\/\//i.test(imageUrl)) linkUrl = imageUrl;
+  const plainText = stripHtmlSimple(raw);
+  return { imageUrl, linkUrl, plainText };
+}
+
+function escapeHtmlAttr(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/** 不依赖命名空间前缀，按 localName 遍历（兼容两步路等 KML） */
+function kmlDeepByLocalName(root, localName) {
+  const out = [];
+  const top = root && root.nodeType === 9 ? root.documentElement : root;
+  if (!top) return out;
+  (function walk(el) {
+    if (el.localName === localName) out.push(el);
+    const ch = el.children;
+    if (!ch) return;
+    for (let i = 0; i < ch.length; i++) walk(ch[i]);
+  })(top);
+  return out;
+}
+
+/** 解析 Document 内所有 Style 的 id → 线条/图标颜色（#rrggbb） */
+function buildKmlStyleColorMap(xml) {
+  const map = {};
+  kmlDeepByLocalName(xml, 'Style').forEach((st) => {
+    const id = st.getAttribute('id');
+    if (!id) return;
+    let hex = null;
+    kmlElementsByTag(st, 'IconStyle').some((is) => {
+      const cols = kmlElementsByTag(is, 'color');
+      if (cols[0] && cols[0].textContent) {
+        hex = kmlIconColorToHex(cols[0].textContent.trim());
+        return true;
+      }
+      return false;
+    });
+    if (!hex) {
+      kmlElementsByTag(st, 'LabelStyle').some((ls) => {
+        const cols = kmlElementsByTag(ls, 'color');
+        if (cols[0] && cols[0].textContent) {
+          hex = kmlIconColorToHex(cols[0].textContent.trim());
+          return true;
+        }
+        return false;
+      });
+    }
+    if (!hex) {
+      kmlElementsByTag(st, 'LineStyle').some((ls) => {
+        const cols = kmlElementsByTag(ls, 'color');
+        if (cols[0] && cols[0].textContent) {
+          hex = kmlIconColorToHex(cols[0].textContent.trim());
+          return true;
+        }
+        return false;
+      });
+    }
+    if (hex) map[id] = hex;
+  });
+  return map;
+}
+
+function styleUrlToId(styleUrl) {
+  if (!styleUrl || typeof styleUrl !== 'string') return null;
+  const m = styleUrl.trim().match(/#([^#\s]+)/);
+  return m ? m[1] : null;
+}
+
+function labelFromImageUrl(url) {
+  if (!url || typeof url !== 'string') return '';
+  try {
+    const u = url.split('?')[0];
+    const seg = u.split('/').filter(Boolean);
+    const last = seg[seg.length - 1] || '';
+    return last.length > 40 ? `${last.slice(0, 18)}…` : last;
+  } catch (e) {
+    return '';
+  }
+}
+
 /** KML aabbggrr or #rrggbb → #rrggbb */
 function kmlIconColorToHex(kmlColor) {
   if (!kmlColor || typeof kmlColor !== 'string') return null;
@@ -2086,26 +2197,31 @@ function kmlElementsByTag(root, localName) {
   return Array.from(root.getElementsByTagName(localName));
 }
 
-/** 从 KML 提取 Point 型标注（与 LineString/gx:Track 轨迹点分开） */
+/** 从 KML 提取 Point 型标注（与 LineString/gx:Track 轨迹线分开）；兼容 description 内嵌网页图片 */
 function extractKmlPointPlacemarks(xml) {
+  const styleMap = buildKmlStyleColorMap(xml);
   const out = [];
-  kmlElementsByTag(xml, 'Placemark').forEach((pm) => {
+  kmlDeepByLocalName(xml, 'Placemark').forEach((pm) => {
     const pointEls = kmlElementsByTag(pm, 'Point');
     const coordNodes = [];
     pointEls.forEach((pt) => {
       kmlElementsByTag(pt, 'coordinates').forEach((c) => coordNodes.push(c));
     });
     if (!coordNodes.length) return;
-    const nameEl = pm.getElementsByTagName('name')[0];
-    const descEl = pm.getElementsByTagName('description')[0];
+    const nameEl = kmlElementsByTag(pm, 'name')[0];
+    const descEl = kmlElementsByTag(pm, 'description')[0];
     const name = stripHtmlSimple(nameEl ? nameEl.textContent : '');
-    const description = stripHtmlSimple(descEl ? descEl.textContent : '');
+    const descRaw = descEl ? descEl.textContent : '';
+    const media = extractKmlDescriptionMedia(descRaw);
     let colorHex = null;
     const iconStyles = kmlElementsByTag(pm, 'IconStyle');
     for (let is = 0; is < iconStyles.length && !colorHex; is++) {
       const cols = kmlElementsByTag(iconStyles[is], 'color');
       if (cols[0] && cols[0].textContent) colorHex = kmlIconColorToHex(cols[0].textContent.trim());
     }
+    const su = kmlElementsByTag(pm, 'styleUrl')[0];
+    const sid = su && su.textContent ? styleUrlToId(su.textContent) : null;
+    if (!colorHex && sid && styleMap[sid]) colorHex = styleMap[sid];
 
     coordNodes.forEach((node) => {
       const raw = (node.textContent || '').trim();
@@ -2122,7 +2238,9 @@ function extractKmlPointPlacemarks(xml) {
         lng: lon,
         z,
         name,
-        description,
+        plainDescription: media.plainText,
+        imageUrl: media.imageUrl,
+        linkUrl: media.linkUrl,
         color: colorHex
       });
     });
@@ -2140,9 +2258,19 @@ function parseGpxWaypoints(xml) {
     const de = w.getElementsByTagName('desc')[0];
     const ee = w.getElementsByTagName('ele')[0];
     const name = stripHtmlSimple(ne ? ne.textContent : '');
-    const description = stripHtmlSimple(de ? de.textContent : '');
+    const descRaw = de ? de.textContent : '';
+    const media = extractKmlDescriptionMedia(descRaw);
     const z = ee && Number.isFinite(Number(ee.textContent)) ? Number(ee.textContent) : null;
-    out.push({ lat, lng: lon, z, name, description, color: null });
+    out.push({
+      lat,
+      lng: lon,
+      z,
+      name,
+      plainDescription: media.plainText,
+      imageUrl: media.imageUrl,
+      linkUrl: media.linkUrl,
+      color: null
+    });
   });
   return out;
 }
@@ -2164,9 +2292,12 @@ function mergeImportedPlacemarksIntoAnnos() {
     if (suppressed.has(key)) return;
     const latlng = [pm.lat, pm.lng];
     const idx = nearestIdx({ lat: pm.lat, lng: pm.lng }, route);
+    const plain = (pm.plainDescription != null ? pm.plainDescription : pm.description) || '';
     let text = (pm.name && String(pm.name).trim()) ? String(pm.name).trim() : '';
-    if (!text && pm.description && String(pm.description).trim()) {
-      text = String(pm.description).trim().slice(0, 200);
+    if (!text && String(plain).trim()) text = String(plain).trim().slice(0, 200);
+    if (!text && pm.imageUrl) {
+      const lb = labelFromImageUrl(pm.imageUrl);
+      if (lb) text = lb;
     }
     if (!text) text = currentLang === 'en' ? `Waypoint ${i + 1}` : `途经点${i + 1}`;
     annos.push({
@@ -2175,6 +2306,8 @@ function mergeImportedPlacemarksIntoAnnos() {
       type: 'note',
       color: pm.color || '#2563eb',
       imageData: null,
+      imageUrl: pm.imageUrl || null,
+      linkUrl: pm.linkUrl || null,
       latlng,
       labelOffset: [0, -10],
       labelLatLng: latlng,
@@ -2193,8 +2326,11 @@ function parseKmlText(text, name) {
   const ele = [];
   const placemarks = extractKmlPointPlacemarks(xml);
 
-  // 1) 优先收集所有 LineString 坐标（兼容多段轨迹）
-  const lineNodes = Array.from(xml.querySelectorAll('LineString coordinates'));
+  // 1) 优先收集所有 LineString 坐标（兼容多段轨迹；用 localName 遍历避免命名空间下 querySelector 失效）
+  const lineNodes = [];
+  kmlDeepByLocalName(xml, 'LineString').forEach((ls) => {
+    kmlElementsByTag(ls, 'coordinates').forEach((c) => lineNodes.push(c));
+  });
   lineNodes.forEach((node) => {
     const raw = (node.textContent || '').trim();
     if (!raw) return;
@@ -2460,6 +2596,8 @@ async function addAnno(latlng) {
     type: annoType || 'note',
     color: annoColor || '#111827',
     imageData,
+    imageUrl: null,
+    linkUrl: null,
     latlng: pt,
     labelOffset: [0, -10],
     labelLatLng: pt,
@@ -2500,11 +2638,18 @@ async function editAnno(i) {
   const n = prompt(t('editTextPrompt'), a.text || '');
   if (n === null) return;
   a.text = (n || '').trim();
-  const action = prompt(t('imageActionPrompt'), a.imageData ? 'keep' : 'replace');
+  const action = prompt(t('imageActionPrompt'), (a.imageData || a.imageUrl) ? 'keep' : 'replace');
   if (action !== null) {
     const ac = String(action).trim().toLowerCase();
-    if (ac === 'remove') a.imageData = null;
-    else if (ac === 'replace') a.imageData = await pickAnnoImageData();
+    if (ac === 'remove') {
+      a.imageData = null;
+      a.imageUrl = null;
+      a.linkUrl = null;
+    } else if (ac === 'replace') {
+      a.imageData = await pickAnnoImageData();
+      a.imageUrl = null;
+      a.linkUrl = null;
+    }
   }
   refreshAnnoMarkers();
   renderAnnoList();
