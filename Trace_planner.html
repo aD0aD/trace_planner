@@ -1265,13 +1265,14 @@ function syncAnalysisTargetUI() {
   const sel = $('analysisTrackSelect');
   if (!sel) return;
   const currentValue = activeTrackId || '__current__';
+  const impPref = (I18N[currentLang] && I18N[currentLang].importedTrackPrefix) || '';
   sel.innerHTML = `<option value="__current__">${currentLang === 'en' ? 'Current working track' : '当前工作轨迹'}（${activeSource || (currentLang === 'en' ? 'Unnamed' : '未命名')}）</option>`;
   tracks.forEach((tr) => {
     const op = document.createElement('option');
     op.value = tr.id;
     op.textContent = currentLang === 'en'
-      ? `${t('importedTrackPrefix')}${tr.name} (${tr.route.length} pts)`
-      : `${t('importedTrackPrefix')}${tr.name} (${tr.route.length}点)`;
+      ? `${impPref}${tr.name} (${tr.route.length} pts)`
+      : `${impPref}${tr.name} (${tr.route.length}点)`;
     sel.appendChild(op);
   });
   sel.value = currentValue;
@@ -2321,17 +2322,17 @@ function routeMatchesImportedTrack(r, tr) {
 /** 将导入轨迹中的点标注（KML Placemark / GPX wpt）合并到当前 annos */
 function mergeImportedPlacemarksIntoAnnos() {
   if (!route || route.length < 2) return;
-  let t = activeTrackId ? tracks.find((x) => x.id === activeTrackId) : null;
-  if (!t) {
-    t = tracks.find((tr) => Array.isArray(tr.placemarks) && tr.placemarks.length && routeMatchesImportedTrack(route, tr));
+  let activeTr = activeTrackId ? tracks.find((x) => x.id === activeTrackId) : null;
+  if (!activeTr) {
+    activeTr = tracks.find((tr) => Array.isArray(tr.placemarks) && tr.placemarks.length && routeMatchesImportedTrack(route, tr));
   }
-  if (!t && tracks.length === 1 && tracks[0].placemarks && tracks[0].placemarks.length) {
-    t = tracks[0];
+  if (!activeTr && tracks.length === 1 && tracks[0].placemarks && tracks[0].placemarks.length) {
+    activeTr = tracks[0];
   }
-  if (!t) return;
-  const list = t && Array.isArray(t.placemarks) ? t.placemarks : [];
+  if (!activeTr) return;
+  const list = activeTr && Array.isArray(activeTr.placemarks) ? activeTr.placemarks : [];
   if (!list.length) return;
-  const suppressed = new Set((t.suppressedPlacemarkKeys || []).map(String));
+  const suppressed = new Set((activeTr.suppressedPlacemarkKeys || []).map(String));
   list.forEach((pm, i) => {
     if (!Number.isFinite(pm.lat) || !Number.isFinite(pm.lng)) return;
     const key = placemarkSuppressionKey(pm.lat, pm.lng);
@@ -2576,8 +2577,8 @@ $('trackInput').addEventListener('change', async (e) => {
   renderTrackList();
   // 每次导入都切换到「本次最后一条」为分析目标，否则在已有工作轨迹时 activeTrackId 仍指向旧轨迹，标注不会合并
   if (tracks.length > 0) {
-    const t = tracks[tracks.length - 1];
-    applyTrackAsActive(t);
+    const lastImported = tracks[tracks.length - 1];
+    applyTrackAsActive(lastImported);
     redrawActiveRoute();
     renderTrackList();
   }
@@ -3094,9 +3095,9 @@ $('analysisTrackSelect').addEventListener('change', (e) => {
     renderTrackList();
     return;
   }
-  const t = tracks.find(x => x.id === v);
-  if (!t) return;
-  applyTrackAsActive(t);
+  const picked = tracks.find(x => x.id === v);
+  if (!picked) return;
+  applyTrackAsActive(picked);
   redrawActiveRoute();
   renderTrackList();
 });
