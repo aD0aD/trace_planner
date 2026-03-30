@@ -689,7 +689,6 @@
       <div class="search-row">
         <input class="panel-input-flex" type="search" id="trackKeywordInput" autocomplete="off" spellcheck="false" />
         <button type="button" id="open2buluSearchBtn">两步路搜索</button>
-        <button type="button" id="open2buluMcBtn">户外社区</button>
       </div>
       <div class="hint" id="onlineSearchHintText"></div>
       <div class="row" style="margin-top:12px;"><b id="urlImportTitleText">从链接加载</b></div>
@@ -886,7 +885,6 @@ const I18N = {
     onlineSearchHint: '网页无法代替你在两步路登录或跨站下载文件。输入关键词后会在新标签打开两步路轨迹搜索；在网页内下载 GPX/KML 后，回到本页用下方「选择文件」导入即可。',
     trackKeywordPlaceholder: '路线关键词，例如：漓江、武功山、火凤线',
     open2buluSearch: '两步路搜索',
-    open2buluMc: '户外社区',
     urlImportTitle: '从链接加载（实验性）',
     urlImportHint: '若 GPX/KML 文件有公网直链且允许跨域（CORS），可粘贴后一键加载；多数平台（含两步路）不提供此类直链，请下载后用文件导入。',
     urlPlaceholder: 'https://…/轨迹.gpx 或 .kml',
@@ -1030,7 +1028,6 @@ const I18N = {
     onlineSearchHint: 'This page cannot log into 2bulu or download files across sites for you. Enter a keyword to open 2bulu track search in a new tab; after you download GPX/KML there, return here and use “Choose file” below.',
     trackKeywordPlaceholder: 'Keywords, e.g. river name, mountain, trail',
     open2buluSearch: '2bulu search',
-    open2buluMc: 'Outdoor community',
     urlImportTitle: 'Load from URL (experimental)',
     urlImportHint: 'If a GPX/KML file is hosted with a public URL and CORS allows it, paste it here. Many sites (including 2bulu) do not offer such links—download the file and import it below.',
     urlPlaceholder: 'https://…/track.gpx or .kml',
@@ -1235,8 +1232,6 @@ function applyLanguage() {
     if (tu) tu.placeholder = t('urlPlaceholder');
     const b2 = $('open2buluSearchBtn');
     if (b2) b2.textContent = t('open2buluSearch');
-    const b3 = $('open2buluMcBtn');
-    if (b3) b3.textContent = t('open2buluMc');
     const b4 = $('fetchUrlBtn');
     if (b4) b4.textContent = t('fetchUrlBtn');
   }
@@ -2714,11 +2709,6 @@ if (kwInput) {
       ev.preventDefault();
       open2buluTrackSearch(kwInput.value);
     }
-  });
-}
-if ($('open2buluMcBtn')) {
-  $('open2buluMcBtn').addEventListener('click', () => {
-    window.open('https://www.2bulu.com/mc/', '_blank', 'noopener,noreferrer');
   });
 }
 if ($('fetchUrlBtn')) {

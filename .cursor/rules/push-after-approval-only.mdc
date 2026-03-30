@@ -1,0 +1,10 @@
+---
+description: Push to remote only after explicit user approval
+alwaysApply: true
+---
+
+# Push Gating Rule
+
+- Never run `git push` unless the user explicitly asks to push in the current conversation.
+- After making local edits, stop at local changes/commit and ask for user review when push intent is not explicit.
+- If the user asks to "push", "publish", or "上传 GitHub", pushing is allowed.
