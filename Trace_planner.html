@@ -166,16 +166,12 @@
       font-size: 0.75rem !important;
       min-width: 4.5rem;
     }
-    .lang-select {
+    .lang-toggle {
+      flex-shrink: 0;
       min-width: 110px;
-      max-width: 140px;
-      padding: 7px 10px;
-      font-size: 0.75rem;
-      border-radius: var(--radius-sm);
-      border: 1px solid var(--line);
-      background: var(--surface);
-      color: var(--ink-secondary);
-      box-shadow: var(--shadow-sm);
+      padding: 8px 14px !important;
+      font-size: 0.75rem !important;
+      white-space: nowrap;
     }
 
     .brand {
@@ -647,10 +643,7 @@
       <div class="header-actions">
         <a class="manual-link" href="https://github.com/aD0aD/trace_planner#readme" target="_blank" rel="noopener noreferrer" title="在 GitHub 打开使用说明">使用手册</a>
         <button type="button" class="theme-toggle" id="themeToggle" title="切换浅色/深色模式" aria-label="切换浅色或深色模式">深色</button>
-        <select id="langToggle" class="lang-select" aria-label="切换语言">
-          <option value="zh">中文</option>
-          <option value="en">English</option>
-        </select>
+        <button type="button" class="lang-toggle" id="langToggle" aria-label="切换语言">中文/English</button>
       </div>
     </header>
     <div class="tabs">
@@ -689,6 +682,7 @@
       <div class="search-row">
         <input class="panel-input-flex" type="search" id="trackKeywordInput" autocomplete="off" spellcheck="false" />
         <button type="button" id="open2buluSearchBtn">两步路搜索</button>
+        <button type="button" id="openSixFootSearchBtn">六只脚搜索</button>
       </div>
       <div class="hint" id="onlineSearchHintText"></div>
       <div class="row" style="margin-top:12px;"><b id="urlImportTitleText">从链接加载</b></div>
@@ -882,10 +876,11 @@ const I18N = {
     importTitle: '导入多条轨迹',
     importHint: '导入后每条轨迹可单独选中进行“截取片段”。',
     onlineSearchTitle: '在线找轨迹',
-    onlineSearchHint: '网页无法代替你在两步路登录或跨站下载文件。输入关键词后会在新标签打开两步路轨迹搜索；在网页内下载 GPX/KML 后，回到本页用下方「选择文件」导入即可。',
+    onlineSearchHint: '输入关键词后可一键打开两步路或六只脚搜索页；在对应网站下载 GPX/KML 后，回到本页导入即可。',
     trackKeywordPlaceholder: '路线关键词，例如：漓江、武功山、火凤线',
     open2buluSearch: '两步路搜索',
-    urlImportTitle: '从链接加载（实验性）',
+    openSixFootSearch: '六只脚搜索',
+    urlImportTitle: '从链接加载（测试）',
     urlImportHint: '若 GPX/KML 文件有公网直链且允许跨域（CORS），可粘贴后一键加载；多数平台（含两步路）不提供此类直链，请下载后用文件导入。',
     urlPlaceholder: 'https://…/轨迹.gpx 或 .kml',
     fetchUrlBtn: '加载',
@@ -1025,10 +1020,11 @@ const I18N = {
     importTitle: 'Import Multiple Tracks',
     importHint: 'After import, each track can be selected and clipped independently.',
     onlineSearchTitle: 'Find tracks online',
-    onlineSearchHint: 'This page cannot log into 2bulu or download files across sites for you. Enter a keyword to open 2bulu track search in a new tab; after you download GPX/KML there, return here and use “Choose file” below.',
+    onlineSearchHint: 'Enter a keyword to open 2bulu or Sixfoot search pages. Download GPX/KML there, then return here to import.',
     trackKeywordPlaceholder: 'Keywords, e.g. river name, mountain, trail',
     open2buluSearch: '2bulu search',
-    urlImportTitle: 'Load from URL (experimental)',
+    openSixFootSearch: 'Sixfoot search',
+    urlImportTitle: 'Load from URL (test)',
     urlImportHint: 'If a GPX/KML file is hosted with a public URL and CORS allows it, paste it here. Many sites (including 2bulu) do not offer such links—download the file and import it below.',
     urlPlaceholder: 'https://…/track.gpx or .kml',
     fetchUrlBtn: 'Load',
@@ -1158,7 +1154,12 @@ function t(k) { return (I18N[currentLang] && I18N[currentLang][k]) || k; }
 
 function applyLanguage() {
   document.documentElement.lang = currentLang === 'en' ? 'en' : 'zh-CN';
-  if ($('langToggle')) $('langToggle').value = currentLang;
+  const langBtn = $('langToggle');
+  if (langBtn) {
+    langBtn.textContent = currentLang === 'en' ? 'English/中文' : '中文/English';
+    langBtn.setAttribute('aria-label', currentLang === 'en' ? 'Switch language' : '切换语言');
+    langBtn.title = currentLang === 'en' ? 'Switch language' : '切换语言';
+  }
   const tag = document.querySelector('.brand-tagline');
   if (tag) tag.textContent = currentLang === 'en' ? 'Track Stitching & Analysis' : '轨迹拼接与分析';
   $('tabStitch').textContent = t('tabStitch');
@@ -1232,6 +1233,8 @@ function applyLanguage() {
     if (tu) tu.placeholder = t('urlPlaceholder');
     const b2 = $('open2buluSearchBtn');
     if (b2) b2.textContent = t('open2buluSearch');
+    const b3 = $('openSixFootSearchBtn');
+    if (b3) b3.textContent = t('openSixFootSearch');
     const b4 = $('fetchUrlBtn');
     if (b4) b4.textContent = t('fetchUrlBtn');
   }
@@ -2697,9 +2700,20 @@ function open2buluTrackSearch(keyword) {
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
+function openSixFootTrackSearch(keyword) {
+  const q = (keyword || '').trim();
+  const url = `https://www.foooooot.com/search/trip/all/1/all/default/descent/?keyword=${encodeURIComponent(q)}`;
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
 if ($('open2buluSearchBtn')) {
   $('open2buluSearchBtn').addEventListener('click', () => {
     open2buluTrackSearch($('trackKeywordInput').value);
+  });
+}
+if ($('openSixFootSearchBtn')) {
+  $('openSixFootSearchBtn').addEventListener('click', () => {
+    openSixFootTrackSearch($('trackKeywordInput').value);
   });
 }
 const kwInput = $('trackKeywordInput');
@@ -3388,8 +3402,8 @@ $('themeToggle').onclick = () => {
 };
 initTheme();
 if ($('langToggle')) {
-  $('langToggle').addEventListener('change', (e) => {
-    currentLang = ['zh', 'en'].includes(e.target.value) ? e.target.value : 'zh';
+  $('langToggle').addEventListener('click', () => {
+    currentLang = currentLang === 'zh' ? 'en' : 'zh';
     localStorage.setItem(LS_LANG_KEY, currentLang);
     applyLanguage();
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
