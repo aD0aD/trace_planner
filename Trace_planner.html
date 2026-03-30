@@ -296,6 +296,9 @@
     }
 
     input[type="number"],
+    input[type="text"],
+    input[type="url"],
+    input[type="search"],
     select {
       width: 100%;
       font-family: inherit;
@@ -309,10 +312,27 @@
     }
 
     input[type="number"]:focus,
+    input[type="text"]:focus,
+    input[type="url"]:focus,
+    input[type="search"]:focus,
     select:focus {
       outline: none;
       border-color: var(--brand);
       box-shadow: 0 0 0 3px var(--brand-soft);
+    }
+
+    .search-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin: 8px 0;
+    }
+
+    .search-row .panel-input-flex {
+      flex: 1;
+      min-width: 140px;
+      width: auto;
     }
 
     input[type="file"] {
@@ -664,7 +684,23 @@
       <div class="row hint" id="methodText"></div>
     </div>
 
-    <div class="box tool-shared">
+    <div class="box tool-shared" id="onlineSearchBox">
+      <div class="row"><b id="onlineSearchTitleText">在线找轨迹</b></div>
+      <div class="search-row">
+        <input class="panel-input-flex" type="search" id="trackKeywordInput" autocomplete="off" spellcheck="false" />
+        <button type="button" id="open2buluSearchBtn">两步路搜索</button>
+        <button type="button" id="open2buluMcBtn">户外社区</button>
+      </div>
+      <div class="hint" id="onlineSearchHintText"></div>
+      <div class="row" style="margin-top:12px;"><b id="urlImportTitleText">从链接加载</b></div>
+      <div class="search-row">
+        <input class="panel-input-flex" type="url" id="trackUrlInput" autocomplete="off" spellcheck="false" />
+        <button type="button" id="fetchUrlBtn">加载</button>
+      </div>
+      <div class="hint" id="urlImportHintText"></div>
+    </div>
+
+    <div class="box tool-shared" id="importTracksBox">
       <div class="row"><b>导入多条轨迹</b></div>
       <input id="trackInput" type="file" multiple accept=".kml,.kmz,.gpx" />
       <div class="hint">导入后每条轨迹可单独选中进行“截取片段”。</div>
@@ -846,6 +882,18 @@ const I18N = {
     privacy: '轨迹与工程数据只在你的浏览器里处理，本站不接收、不存储你的文件。',
     importTitle: '导入多条轨迹',
     importHint: '导入后每条轨迹可单独选中进行“截取片段”。',
+    onlineSearchTitle: '在线找轨迹',
+    onlineSearchHint: '网页无法代替你在两步路登录或跨站下载文件。输入关键词后会在新标签打开两步路轨迹搜索；在网页内下载 GPX/KML 后，回到本页用下方「选择文件」导入即可。',
+    trackKeywordPlaceholder: '路线关键词，例如：漓江、武功山、火凤线',
+    open2buluSearch: '两步路搜索',
+    open2buluMc: '户外社区',
+    urlImportTitle: '从链接加载（实验性）',
+    urlImportHint: '若 GPX/KML 文件有公网直链且允许跨域（CORS），可粘贴后一键加载；多数平台（含两步路）不提供此类直链，请下载后用文件导入。',
+    urlPlaceholder: 'https://…/轨迹.gpx 或 .kml',
+    fetchUrlBtn: '加载',
+    fetchUrlBad: '请输入以 http 开头的有效链接，且文件为 .gpx / .kml / .kmz。',
+    fetchUrlFail: '加载失败：',
+    fetchUrlCors: '无法从该地址直接读取（常见原因：对方网站不允许跨域）。请改用「选择文件」导入已下载的文件。',
     annoTitle: '路线标注',
     annoType: '标注类型',
     addAnno: '添加标注',
@@ -978,6 +1026,18 @@ const I18N = {
     privacy: 'All route/project data stays in your browser. This site does not upload or store your files.',
     importTitle: 'Import Multiple Tracks',
     importHint: 'After import, each track can be selected and clipped independently.',
+    onlineSearchTitle: 'Find tracks online',
+    onlineSearchHint: 'This page cannot log into 2bulu or download files across sites for you. Enter a keyword to open 2bulu track search in a new tab; after you download GPX/KML there, return here and use “Choose file” below.',
+    trackKeywordPlaceholder: 'Keywords, e.g. river name, mountain, trail',
+    open2buluSearch: '2bulu search',
+    open2buluMc: 'Outdoor community',
+    urlImportTitle: 'Load from URL (experimental)',
+    urlImportHint: 'If a GPX/KML file is hosted with a public URL and CORS allows it, paste it here. Many sites (including 2bulu) do not offer such links—download the file and import it below.',
+    urlPlaceholder: 'https://…/track.gpx or .kml',
+    fetchUrlBtn: 'Load',
+    fetchUrlBad: 'Enter a valid http(s) URL to a .gpx / .kml / .kmz file.',
+    fetchUrlFail: 'Load failed: ',
+    fetchUrlCors: 'Cannot fetch this URL (often blocked by CORS). Download the file and use file import below.',
     annoTitle: 'Annotations',
     annoType: 'Annotation Type',
     addAnno: 'Add Annotation',
@@ -1159,10 +1219,32 @@ function applyLanguage() {
     const p = boxesShared[0].querySelector('.privacy-note');
     if (p) p.textContent = t('privacy');
   }
-  if (boxesShared[1]) {
-    const b = boxesShared[1].querySelector('.row b');
+  const osBox = $('onlineSearchBox');
+  if (osBox) {
+    const elOsTitle = $('onlineSearchTitleText');
+    if (elOsTitle) elOsTitle.textContent = t('onlineSearchTitle');
+    const h1 = $('onlineSearchHintText');
+    if (h1) h1.textContent = t('onlineSearchHint');
+    const elUrlTitle = $('urlImportTitleText');
+    if (elUrlTitle) elUrlTitle.textContent = t('urlImportTitle');
+    const h2 = $('urlImportHintText');
+    if (h2) h2.textContent = t('urlImportHint');
+    const kw = $('trackKeywordInput');
+    if (kw) kw.placeholder = t('trackKeywordPlaceholder');
+    const tu = $('trackUrlInput');
+    if (tu) tu.placeholder = t('urlPlaceholder');
+    const b2 = $('open2buluSearchBtn');
+    if (b2) b2.textContent = t('open2buluSearch');
+    const b3 = $('open2buluMcBtn');
+    if (b3) b3.textContent = t('open2buluMc');
+    const b4 = $('fetchUrlBtn');
+    if (b4) b4.textContent = t('fetchUrlBtn');
+  }
+  const importBox = $('importTracksBox');
+  if (importBox) {
+    const b = importBox.querySelector('.row b');
     if (b) b.textContent = t('importTitle');
-    const h = boxesShared[1].querySelector('.hint');
+    const h = importBox.querySelector('.hint');
     if (h) h.textContent = t('importHint');
   }
   const stitchBoxes = document.querySelectorAll('.box.tool-stitch');
@@ -2533,6 +2615,51 @@ function parseGpxText(text, name) {
   return {name, route, ele, placemarks};
 }
 
+function pushImportedTrack(parsed) {
+  const pref = computePrefix(parsed.route, parsed.ele);
+  const color = palette[tracks.length % palette.length];
+  const layer = L.polyline(parsed.route, {color, weight:2, opacity:0.8}).addTo(importedLayer);
+  tracks.push({
+    id: crypto.randomUUID(),
+    name: parsed.name,
+    route: parsed.route,
+    ele: parsed.ele,
+    prefDist: pref.prefDist,
+    prefUp: pref.prefUp,
+    prefDown: pref.prefDown,
+    color,
+    layer,
+    placemarks: parsed.placemarks || [],
+    suppressedPlacemarkKeys: []
+  });
+  return tracks[tracks.length - 1];
+}
+
+function guessFilenameFromTrackUrl(urlStr) {
+  try {
+    const path = new URL(urlStr).pathname;
+    const seg = path.split('/').filter(Boolean).pop();
+    if (seg && /\.(gpx|kml|kmz)$/i.test(seg)) return decodeURIComponent(seg);
+  } catch (_) {}
+  return 'track.gpx';
+}
+
+async function importTrackFromUrl(urlStr) {
+  const raw = urlStr.trim();
+  if (!raw) throw new Error(t('fetchUrlBad'));
+  let u;
+  try { u = new URL(raw); } catch { throw new Error(t('fetchUrlBad')); }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error(t('fetchUrlBad'));
+  const path = u.pathname.toLowerCase();
+  if (!path.endsWith('.gpx') && !path.endsWith('.kml') && !path.endsWith('.kmz')) throw new Error(t('fetchUrlBad'));
+  const res = await fetch(raw, { mode: 'cors', credentials: 'omit' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const blob = await res.blob();
+  const name = guessFilenameFromTrackUrl(raw);
+  const file = new File([blob], name, { type: blob.type || 'application/octet-stream' });
+  return parseFile(file);
+}
+
 async function parseFile(file) {
   const name = file.name;
   if (name.toLowerCase().endsWith('.kmz')) {
@@ -2554,22 +2681,7 @@ $('trackInput').addEventListener('change', async (e) => {
   for (const f of files) {
     try {
       const parsed = await parseFile(f);
-      const pref = computePrefix(parsed.route, parsed.ele);
-      const color = palette[tracks.length % palette.length];
-      const layer = L.polyline(parsed.route, {color, weight:2, opacity:0.8}).addTo(importedLayer);
-      tracks.push({
-        id: crypto.randomUUID(),
-        name: parsed.name,
-        route: parsed.route,
-        ele: parsed.ele,
-        prefDist: pref.prefDist,
-        prefUp: pref.prefUp,
-        prefDown: pref.prefDown,
-        color,
-        layer,
-        placemarks: parsed.placemarks || [],
-        suppressedPlacemarkKeys: []
-      });
+      pushImportedTrack(parsed);
     } catch (err) {
       alert((currentLang === 'en' ? 'Import failed: ' : '导入失败: ') + (err.message || err));
     }
@@ -2583,6 +2695,68 @@ $('trackInput').addEventListener('change', async (e) => {
     renderTrackList();
   }
 });
+
+function open2buluTrackSearch(keyword) {
+  const q = (keyword || '').trim();
+  const url = `https://app.2bulu.com/track/track_search.htm?key=${encodeURIComponent(q)}`;
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+if ($('open2buluSearchBtn')) {
+  $('open2buluSearchBtn').addEventListener('click', () => {
+    open2buluTrackSearch($('trackKeywordInput').value);
+  });
+}
+const kwInput = $('trackKeywordInput');
+if (kwInput) {
+  kwInput.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      open2buluTrackSearch(kwInput.value);
+    }
+  });
+}
+if ($('open2buluMcBtn')) {
+  $('open2buluMcBtn').addEventListener('click', () => {
+    window.open('https://www.2bulu.com/mc/', '_blank', 'noopener,noreferrer');
+  });
+}
+if ($('fetchUrlBtn')) {
+  $('fetchUrlBtn').addEventListener('click', async () => {
+    const btn = $('fetchUrlBtn');
+    const urlEl = $('trackUrlInput');
+    const raw = urlEl && urlEl.value ? urlEl.value.trim() : '';
+    try {
+      btn.disabled = true;
+      const parsed = await importTrackFromUrl(raw);
+      const last = pushImportedTrack(parsed);
+      applyTrackAsActive(last);
+      redrawActiveRoute();
+      renderTrackList();
+      if (urlEl) urlEl.value = '';
+    } catch (err) {
+      const msg = err && err.message != null ? String(err.message) : '';
+      if (msg === t('fetchUrlBad')) {
+        alert(msg);
+      } else if (err && err.name === 'TypeError') {
+        alert(t('fetchUrlCors'));
+      } else {
+        alert(t('fetchUrlFail') + msg);
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  const urlInput = $('trackUrlInput');
+  if (urlInput) {
+    urlInput.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        $('fetchUrlBtn').click();
+      }
+    });
+  }
+}
 
 // 片段篮子
 function renderClipList() {
