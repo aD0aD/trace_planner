@@ -2702,8 +2702,7 @@ function open2buluTrackSearch(keyword) {
 
 function openSixFootTrackSearch(keyword) {
   const q = (keyword || '').trim();
-  // 六只脚官方搜索页经常会直接跳登录，这里改为站点内 trip 页面检索，优先给出可浏览轨迹结果
-  const url = `https://www.baidu.com/s?wd=${encodeURIComponent(`site:www.foooooot.com/trip ${q}`)}`;
+  const url = `https://www.foooooot.com/search/trip/all/1/all/time/descent/?keyword=${encodeURIComponent(q)}`;
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 

@@ -14,7 +14,7 @@ No installation, no login, and no backend required for normal use.
 ### Track Import & Map View
 - Import `KML`, `KMZ`, and `GPX`
 - Work with multiple tracks in one project
-- Keyword track lookup on 2bulu / Sixfoot (Sixfoot opens trip-result lookup to avoid login-only search pages)
+- Keyword track lookup on 2bulu / Sixfoot (opens site search pages)
 - Switch map base layers (Satellite / Topographic / Street) with hillshade overlay
 
 ### Track Stitching
