@@ -2199,17 +2199,41 @@ function kmlElementsByTag(root, localName) {
   return Array.from(root.getElementsByTagName(localName));
 }
 
-/** 从 KML 提取 Point 型标注（与 LineString/gx:Track 轨迹线分开）；兼容 description 内嵌网页图片 */
+function findAncestorPlacemark(el) {
+  let n = el;
+  while (n) {
+    if (n.nodeType === 1 && n.localName === 'Placemark') return n;
+    n = n.parentNode;
+  }
+  return null;
+}
+
+/**
+ * 从 KML 提取 Point 型标注（与 LineString 分离）。
+ * 在整文档范围内收集 coordinates，父节点为 Point 的为标注点；父节点为 LineString 的为轨迹线（跳过）。
+ * 比「先 Placemark 再 getElementsByTagNS(Point)」更稳，部分浏览器在子树上取不到 Point。
+ */
 function extractKmlPointPlacemarks(xml) {
   const styleMap = buildKmlStyleColorMap(xml);
   const out = [];
-  kmlDeepByLocalName(xml, 'Placemark').forEach((pm) => {
-    const pointEls = kmlElementsByTag(pm, 'Point');
-    const coordNodes = [];
-    pointEls.forEach((pt) => {
-      kmlElementsByTag(pt, 'coordinates').forEach((c) => coordNodes.push(c));
-    });
-    if (!coordNodes.length) return;
+  const ns = 'http://www.opengis.net/kml/2.2';
+  const coordEls = [];
+  const c1 = xml.getElementsByTagNameNS(ns, 'coordinates');
+  if (c1 && c1.length) {
+    for (let i = 0; i < c1.length; i++) coordEls.push(c1[i]);
+  } else {
+    const c2 = xml.getElementsByTagName('coordinates');
+    if (c2 && c2.length) {
+      for (let i = 0; i < c2.length; i++) coordEls.push(c2[i]);
+    }
+  }
+
+  coordEls.forEach((coordNode) => {
+    const par = coordNode.parentNode;
+    if (!par || par.localName !== 'Point') return;
+    const pm = findAncestorPlacemark(coordNode);
+    if (!pm) return;
+
     const nameEl = kmlElementsByTag(pm, 'name')[0];
     const descEl = kmlElementsByTag(pm, 'description')[0];
     const name = stripHtmlSimple(nameEl ? nameEl.textContent : '');
@@ -2225,26 +2249,24 @@ function extractKmlPointPlacemarks(xml) {
     const sid = su && su.textContent ? styleUrlToId(su.textContent) : null;
     if (!colorHex && sid && styleMap[sid]) colorHex = styleMap[sid];
 
-    coordNodes.forEach((node) => {
-      const raw = (node.textContent || '').trim();
-      if (!raw) return;
-      const first = raw.split(/[\s\n]+/)[0];
-      const parts = first.split(',');
-      if (parts.length < 2) return;
-      const lon = Number(parts[0]);
-      const lat = Number(parts[1]);
-      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
-      const z = parts.length >= 3 && Number.isFinite(Number(parts[2])) ? Number(parts[2]) : null;
-      out.push({
-        lat,
-        lng: lon,
-        z,
-        name,
-        plainDescription: media.plainText,
-        imageUrl: media.imageUrl,
-        linkUrl: media.linkUrl,
-        color: colorHex
-      });
+    const raw = (coordNode.textContent || '').trim();
+    if (!raw) return;
+    const first = raw.split(/[\s\n]+/)[0];
+    const parts = first.split(',');
+    if (parts.length < 2) return;
+    const lon = Number(parts[0]);
+    const lat = Number(parts[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+    const z = parts.length >= 3 && Number.isFinite(Number(parts[2])) ? Number(parts[2]) : null;
+    out.push({
+      lat,
+      lng: lon,
+      z,
+      name,
+      plainDescription: media.plainText,
+      imageUrl: media.imageUrl,
+      linkUrl: media.linkUrl,
+      color: colorHex
     });
   });
   return out;
@@ -2296,6 +2318,9 @@ function mergeImportedPlacemarksIntoAnnos() {
   let t = activeTrackId ? tracks.find((x) => x.id === activeTrackId) : null;
   if (!t) {
     t = tracks.find((tr) => Array.isArray(tr.placemarks) && tr.placemarks.length && routeMatchesImportedTrack(route, tr));
+  }
+  if (!t && tracks.length === 1 && tracks[0].placemarks && tracks[0].placemarks.length) {
+    t = tracks[0];
   }
   if (!t) return;
   const list = t && Array.isArray(t.placemarks) ? t.placemarks : [];
