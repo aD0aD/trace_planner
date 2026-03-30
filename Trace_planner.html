@@ -2360,39 +2360,94 @@ function mergeImportedPlacemarksIntoAnnos() {
   renderAnnoList();
 }
 
-/** 收集所有属于 LineString 的 coordinates 节点（比先找 LineString 再子查更兼容各浏览器 XML 实现） */
+function kmlDeepByLocalNameCI(root, localLower) {
+  const out = [];
+  const top = root && root.nodeType === 9 ? root.documentElement : root;
+  if (!top) return out;
+  (function walk(el) {
+    if (el.nodeType === 1 && el.localName && el.localName.toLowerCase() === localLower) out.push(el);
+    const ch = el.childNodes;
+    if (!ch) return;
+    for (let i = 0; i < ch.length; i++) {
+      if (ch[i].nodeType === 1) walk(ch[i]);
+    }
+  })(top);
+  return out;
+}
+
+function isKmlLineStringElement(el) {
+  if (!el || el.nodeType !== 1) return false;
+  if (el.localName === 'LineString') return true;
+  const t = el.tagName || '';
+  return /linestring$/i.test(t);
+}
+
+/** 收集 LineString 下的 coordinates 节点：优先从每个 LineString 子树取（最可靠），再按父节点筛选全文档 coordinates */
 function kmlLineStringCoordinateNodes(xml) {
   const nodes = [];
   const seen = new Set();
-  const tryAdd = (n) => {
-    const par = n && n.parentNode;
-    if (!par || par.localName !== 'LineString') return;
-    if (seen.has(n)) return;
-    seen.add(n);
-    nodes.push(n);
+  const push = (n) => {
+    if (n && !seen.has(n)) {
+      seen.add(n);
+      nodes.push(n);
+    }
   };
-  const ns = 'http://www.opengis.net/kml/2.2';
-  const byNs = xml.getElementsByTagNameNS(ns, 'coordinates');
-  if (byNs && byNs.length) {
-    for (let i = 0; i < byNs.length; i++) tryAdd(byNs[i]);
+
+  let lineStrEls = kmlDeepByLocalName(xml, 'LineString');
+  if (!lineStrEls.length) {
+    lineStrEls = kmlDeepByLocalNameCI(xml, 'linestring');
   }
+  lineStrEls.forEach((ls) => {
+    kmlElementsByTag(ls, 'coordinates').forEach(push);
+    let ch = ls.firstElementChild;
+    while (ch) {
+      if (ch.localName && ch.localName.toLowerCase() === 'coordinates') push(ch);
+      ch = ch.nextElementSibling;
+    }
+  });
+
   if (!nodes.length) {
-    const byTag = xml.getElementsByTagName('coordinates');
-    if (byTag && byTag.length) {
-      for (let i = 0; i < byTag.length; i++) tryAdd(byTag[i]);
+    const tryParent = (n) => {
+      const par = n && n.parentNode;
+      if (par && isKmlLineStringElement(par)) push(n);
+    };
+    const ns = 'http://www.opengis.net/kml/2.2';
+    const a = xml.getElementsByTagNameNS(ns, 'coordinates');
+    if (a && a.length) for (let i = 0; i < a.length; i++) tryParent(a[i]);
+    if (!nodes.length) {
+      const b = xml.getElementsByTagName('coordinates');
+      if (b && b.length) for (let i = 0; i < b.length; i++) tryParent(b[i]);
     }
   }
-  if (!nodes.length) {
-    kmlDeepByLocalName(xml, 'LineString').forEach((ls) => {
-      kmlElementsByTag(ls, 'coordinates').forEach((c) => {
-        if (!seen.has(c)) {
-          seen.add(c);
-          nodes.push(c);
-        }
-      });
-    });
-  }
   return nodes;
+}
+
+/** 将 KML coordinates 文本解析为 route/ele（lon,lat[,alt] 空格分隔；失败时用正则兜底） */
+function appendRouteFromKmlCoordinatesText(raw, route, ele) {
+  if (raw == null) return;
+  let s = String(raw).replace(/\u00a0/g, ' ').replace(/\r\n/g, '\n').trim();
+  if (!s) return;
+  const before = route.length;
+  s.split(/\s+/).forEach((tok) => {
+    if (!tok) return;
+    const p = tok.split(',');
+    if (p.length < 2) return;
+    const lon = Number(String(p[0]).trim());
+    const lat = Number(String(p[1]).trim());
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+    route.push([lat, lon]);
+    ele.push(p.length >= 3 && Number.isFinite(Number(String(p[2]).trim())) ? Number(String(p[2]).trim()) : null);
+  });
+  if (route.length > before) return;
+  const re = /(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)(?:\s*,\s*(-?\d+(?:\.\d+)?))?/g;
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    const lon = Number(m[1]);
+    const lat = Number(m[2]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    route.push([lat, lon]);
+    ele.push(m[3] != null && Number.isFinite(Number(m[3])) ? Number(m[3]) : null);
+  }
 }
 
 function parseKmlText(text, name) {
@@ -2409,18 +2464,8 @@ function parseKmlText(text, name) {
   // 1) 收集所有 LineString 下的 coordinates（多段轨迹会多段拼接）
   const lineNodes = kmlLineStringCoordinateNodes(xml);
   lineNodes.forEach((node) => {
-    const raw = (node.textContent || '').trim();
-    if (!raw) return;
-    raw.split(/\s+/).forEach((tok) => {
-      const p = tok.split(',');
-      if (p.length >= 2) {
-        const lat = Number(p[1]);
-        const lon = Number(p[0]);
-        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
-        route.push([lat, lon]);
-        ele.push(p.length >= 3 && Number.isFinite(Number(p[2])) ? Number(p[2]) : null);
-      }
-    });
+    const raw = node.textContent != null ? node.textContent : '';
+    appendRouteFromKmlCoordinatesText(raw, route, ele);
   });
 
   // 2) 若没有 LineString，则尝试 gx:Track/gx:coord
