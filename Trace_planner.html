@@ -876,7 +876,7 @@ const I18N = {
     importTitle: '导入多条轨迹',
     importHint: '导入后每条轨迹可单独选中进行“截取片段”。',
     onlineSearchTitle: '在线找轨迹',
-    onlineSearchHint: '输入关键词后可一键打开两步路或六只脚搜索页；在对应网站下载 GPX/KML 后，回到本页导入即可。',
+    onlineSearchHint: '输入关键词后可一键打开两步路搜索，或打开六只脚轨迹检索结果（避免官网搜索页直接跳登录）；在对应网站下载 GPX/KML 后，回到本页导入即可。',
     trackKeywordPlaceholder: '路线关键词，例如：漓江、武功山、火凤线',
     open2buluSearch: '两步路搜索',
     openSixFootSearch: '六只脚搜索',
@@ -1020,7 +1020,7 @@ const I18N = {
     importTitle: 'Import Multiple Tracks',
     importHint: 'After import, each track can be selected and clipped independently.',
     onlineSearchTitle: 'Find tracks online',
-    onlineSearchHint: 'Enter a keyword to open 2bulu or Sixfoot search pages. Download GPX/KML there, then return here to import.',
+    onlineSearchHint: 'Enter a keyword to open 2bulu search, or Sixfoot trip results (to avoid direct-login redirects on the official search page). Download GPX/KML there, then return here to import.',
     trackKeywordPlaceholder: 'Keywords, e.g. river name, mountain, trail',
     open2buluSearch: '2bulu search',
     openSixFootSearch: 'Sixfoot search',
@@ -2702,7 +2702,8 @@ function open2buluTrackSearch(keyword) {
 
 function openSixFootTrackSearch(keyword) {
   const q = (keyword || '').trim();
-  const url = `https://www.foooooot.com/search/trip/all/1/all/default/descent/?keyword=${encodeURIComponent(q)}`;
+  // 六只脚官方搜索页经常会直接跳登录，这里改为站点内 trip 页面检索，优先给出可浏览轨迹结果
+  const url = `https://www.baidu.com/s?wd=${encodeURIComponent(`site:www.foooooot.com/trip ${q}`)}`;
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 

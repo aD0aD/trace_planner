@@ -15,12 +15,13 @@ Trace Planner 是一个面向徒步/越野路线的在线轨迹拼接与分析�
 ## What You Can Do
 
 - Import `KML / KMZ / GPX` tracks
+- Search tracks by keyword on `2bulu / 六只脚` (六只脚 uses trip-result lookup to avoid login redirect)
 - Clip and stitch segments from multiple tracks
 - Analyze distance, ascent, and descent by segment
 - Add text/image annotations
 - Export `KML / GPX / GeoJSON` and elevation chart PNG
 - Save/load full project as `project.json`
-- Switch UI language (中文 / English)
+- Toggle UI language (中文 / English) with one button
 - Switch theme (Light / Dark)
 
 ## Privacy

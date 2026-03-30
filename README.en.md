@@ -4,7 +4,7 @@ Trace Planner is a browser-based route stitching and analysis tool for hiking/tr
 No installation, no login, and no backend required for normal use.
 
 - Website: [https://ad0ad.github.io/trace_planner/](https://ad0ad.github.io/trace_planner/)
-- UI Languages: Chinese / English (top-right switch)
+- UI Languages: Chinese / English (top-right toggle)
 - Themes: Light / Dark (top-right switch)
 
 ---
@@ -14,6 +14,7 @@ No installation, no login, and no backend required for normal use.
 ### Track Import & Map View
 - Import `KML`, `KMZ`, and `GPX`
 - Work with multiple tracks in one project
+- Keyword track lookup on 2bulu / Sixfoot (Sixfoot opens trip-result lookup to avoid login-only search pages)
 - Switch map base layers (Satellite / Topographic / Street) with hillshade overlay
 
 ### Track Stitching
