@@ -1266,10 +1266,12 @@ function syncAnalysisTargetUI() {
   if (!sel) return;
   const currentValue = activeTrackId || '__current__';
   sel.innerHTML = `<option value="__current__">${currentLang === 'en' ? 'Current working track' : '当前工作轨迹'}（${activeSource || (currentLang === 'en' ? 'Unnamed' : '未命名')}）</option>`;
-  tracks.forEach((t) => {
+  tracks.forEach((tr) => {
     const op = document.createElement('option');
-    op.value = t.id;
-    op.textContent = currentLang === 'en' ? `${t('importedTrackPrefix')}${t.name} (${t.route.length} pts)` : `${t('importedTrackPrefix')}${t.name} (${t.route.length}点)`;
+    op.value = tr.id;
+    op.textContent = currentLang === 'en'
+      ? `${t('importedTrackPrefix')}${tr.name} (${tr.route.length} pts)`
+      : `${t('importedTrackPrefix')}${tr.name} (${tr.route.length}点)`;
     sel.appendChild(op);
   });
   sel.value = currentValue;
@@ -1684,7 +1686,11 @@ function computePrefix(routePts, eleArr) {
 
 function updateStats() {
   $('sourceName').textContent = activeSource;
-  syncAnalysisTargetUI();
+  try {
+    syncAnalysisTargetUI();
+  } catch (err) {
+    console.error('syncAnalysisTargetUI', err);
+  }
   renderBreakpointAnalysis();
   if (!route || route.length < 2) {
     $('totalPts').textContent = '0';
@@ -2483,6 +2489,15 @@ function parseKmlText(text, name) {
         ele.push(p.length >= 3 && Number.isFinite(Number(p[2])) ? Number(p[2]) : null);
       }
     });
+  }
+
+  // 3) DOM 取坐标仍不足时，用正则从原始文本抠 LineString（不依赖 XML 树）
+  if (route.length < 2 && typeof text === 'string') {
+    const re = /<LineString[^>]*>[\s\S]*?<coordinates[^>]*>\s*([\s\S]*?)\s*<\/coordinates>/gi;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      appendRouteFromKmlCoordinatesText(m[1], route, ele);
+    }
   }
 
   // 去掉连续重复点
