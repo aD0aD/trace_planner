@@ -4,3 +4,6 @@ __pycache__/
 
 # 仅维护者本地保留的部署说明，不提交到 GitHub
 DEPLOY.md
+
+node_modules/
+site/

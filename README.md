@@ -1,6 +1,6 @@
 # Trace Planner
 
-Trace Planner 是一个面向徒步/越野路线的在线轨迹拼接与分析工具。  
+Trace Planner 是一个面向徒步/越野路线的在线轨迹拼接与分析工具。
 无需安装客户端，直接在浏览器中完成导入、拼接、分析、标注与导出。
 
 ## Website
@@ -26,9 +26,19 @@ Trace Planner 是一个面向徒步/越野路线的在线轨迹拼接与分析�
 
 ## Privacy
 
-All route/project files are processed locally in your browser.  
+All route/project files are processed locally in your browser.
 The website does not upload or store your files.
 
 ## License
 
 MIT (see `LICENSE`)
+
+## Leader Planning (v3)
+
+- Independent main, alternative, and escape routes with revisions
+- Preserved track gaps and honest missing-elevation statistics
+- Editable verified waypoints, distance-based splits, itinerary timing and decision notes
+- Printable roadbooks and itinerary CSV
+- Automatic local drafts, undo/redo, and cached application access for offline revisits (basemaps require network)
+
+See the [Chinese guide](README.zh.md#八领队规划更新v3) or [English guide](README.en.md#8-leader-planning-v3) for details and compatibility limits.

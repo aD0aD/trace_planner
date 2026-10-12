@@ -1,11 +1,9 @@
-# 在仓库 Settings → Pages → Build and deployment → Source 选择「GitHub Actions」后，
-# 推送 main 分支会自动发布静态站点（无需自有服务器）。
-
-name: Deploy GitHub Pages
+name: Test and deploy GitHub Pages
 
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -14,20 +12,40 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
   deploy:
+    if: github.event_name != 'pull_request'
+    needs: test
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare public application files
+        run: |
+          mkdir site
+          cp index.html Trace_planner.html route-core.js planner.js planner.css sw.js LICENSE site/
+          cp -R assets vendor site/
+          touch site/.nojekyll
       - uses: actions/configure-pages@v4
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: site
       - id: deployment
         uses: actions/deploy-pages@v4
