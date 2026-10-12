@@ -1,0 +1,10 @@
+.metadata-row {display:flex;gap:10px;flex-wrap:wrap}.metadata-row label {flex:1;min-width:90px}
+#leaderPlanner label, #annotationDialog label {display:block;font-size:12px;margin:8px 0;color:var(--ink-secondary)}
+textarea,input[type=time] {width:100%;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font:inherit}
+.table-scroll {overflow-x:auto;margin:12px 0}.plan-table {min-width:650px}.plan-table td {vertical-align:top;white-space:pre-line}.plan-table td:first-child {min-width:130px}.plan-table td:nth-child(2){min-width:145px}.plan-table td:nth-child(3){min-width:130px}.plan-table td:nth-child(4){min-width:220px}
+#annotationDialog {width:min(600px,95vw);max-height:90dvh;overflow:auto;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--ink)}
+#annotationDialog::backdrop {background:rgba(0,0,0,.45)}
+#roadbook {display:none}.route-sketch {display:block;width:100%;height:auto;border:1px solid #ddd}.print-profile {width:100%;height:180px;object-fit:contain}
+#gapList button {border-color:#dc2626}.seg-table tbody tr {cursor:pointer}.seg-table tbody tr:hover {background:var(--brand-soft)}
+@media(max-width:900px){#app{height:100dvh;grid-template-rows:minmax(180px,40dvh) 0 minmax(0,1fr)!important}#panel{max-height:40dvh;grid-row:1}#map{grid-row:3;min-height:0}.tabs{flex-direction:row;position:sticky;top:0;z-index:3}.leaflet-control-layers{max-width:160px}button{min-height:40px;padding:8px 10px}.list li{flex-wrap:wrap}.list .t{flex-basis:100%}#leaderPlanner{padding:12px}}
+@media print {@page{size:A4;margin:14mm}html,body{height:auto;background:white;color:black;font:11pt sans-serif}#app,dialog{display:none!important}#roadbook{display:block}#roadbook h1{font-size:20pt}#roadbook h2{font-size:14pt}#roadbook table{font-size:9pt}#roadbook th,#roadbook td{border:1px solid #aaa;padding:5px;white-space:pre-wrap}#roadbook p{white-space:pre-wrap;overflow-wrap:anywhere}#roadbook tr,#roadbook p{break-inside:avoid}.route-sketch{max-height:90mm}.print-profile{height:45mm}}

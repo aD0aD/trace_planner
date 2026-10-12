@@ -7,10 +7,7 @@
   <title>Trace Planner · 轨迹拼接与分析</title>
   <link rel="icon" type="image/png" href="assets/logo.png" />
   <link rel="apple-touch-icon" href="assets/logo.png" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="vendor/leaflet.css" />
   <style>
     :root {
       --brand: #45D1B3;
@@ -705,7 +702,7 @@
       <div class="row">起点索引: <span id="startIdx"></span></div>
       <input id="startRange" type="range" min="0" step="1" />
       <div class="row">终点索引: <span id="endIdx"></span></div>
-      <input id="endRange" type="range" min="1" step="1" />
+      <input id="endRange" type="range" min="0" step="1" />
       <div class="btns">
         <button id="pickBtn">地图选起终点</button>
         <button id="addClipBtn">加入拼接篮子</button>
@@ -829,8 +826,9 @@
   <div id="map"></div>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="vendor/leaflet.js"></script>
+<script src="vendor/jszip.min.js"></script>
+<script src="route-core.js"></script>
 <script>
 const BASE = {route: [], ele: [], prefDist: [], prefUp: [], prefDown: [], meta: {}};
 
@@ -838,6 +836,11 @@ const palette = ['#1e88e5','#43a047','#fb8c00','#8e24aa','#00acc1','#6d4c41'];
 const tracks = []; // {id,name,route,ele,prefDist,prefUp,prefDown,color,layer}
 let activeTrackId = null;
 let activeSource = '';
+let routeBreaks = [];
+let segmentPlans = [];
+let routeRevision = 1;
+let routeRole = 'main';
+let departureTime = '08:00';
 let elevCalcMode = 'smooth_threshold';
 let elevSmoothWindow = 5;
 let elevThreshold = 1.0;
@@ -856,7 +859,8 @@ const $ = (id) => document.getElementById(id);
 const LS_PROJECT_KEY = 'trace_planner_project_v1';
 const LS_PROJECT_MAX_BYTES = 4 * 1024 * 1024;
 const LS_LANG_KEY = 'trace_planner_lang';
-let currentLang = localStorage.getItem(LS_LANG_KEY) || 'zh';
+function localRead(key){try{return localStorage.getItem(key);}catch{return null;}}
+let currentLang = localRead(LS_LANG_KEY) || 'zh';
 if (!['zh', 'en'].includes(currentLang)) currentLang = 'zh';
 
 const I18N = {
@@ -880,7 +884,7 @@ const I18N = {
     trackKeywordPlaceholder: '路线关键词，例如：漓江、武功山、火凤线',
     open2buluSearch: '两步路搜索',
     openSixFootSearch: '六只脚搜索',
-    urlImportTitle: '从链接加载（测试）',
+    urlImportTitle: '从链接加载',
     urlImportHint: '若 GPX/KML 文件有公网直链且允许跨域（CORS），可粘贴后一键加载；多数平台（含两步路）不提供此类直链，请下载后用文件导入。',
     urlPlaceholder: 'https://…/轨迹.gpx 或 .kml',
     fetchUrlBtn: '加载',
@@ -1307,14 +1311,14 @@ function applyLanguage() {
     if (th[3]) th[3].textContent = t('segCol4');
     if (th[4]) th[4].textContent = t('segCol5');
   }
-  const annoBox = document.querySelectorAll('.box.tool-analysis')[4];
+  const annoBox = document.querySelectorAll('.box.tool-analysis')[3];
   if (annoBox) {
     const b = annoBox.querySelector('.row b');
     if (b) b.textContent = t('annoTitle');
     const label = annoBox.querySelector('.label');
     if (label) label.textContent = t('annoType');
   }
-  const exportBox = document.querySelectorAll('.box.tool-analysis')[5];
+  const exportBox = document.querySelectorAll('.box.tool-analysis')[4];
   if (exportBox) {
     const b = exportBox.querySelector('.row b');
     if (b) b.textContent = t('exportTitle');
@@ -1329,14 +1333,19 @@ function applyLanguage() {
 
 function applyTrackAsActive(trackObj) {
   if (!trackObj) return;
+  saveActiveTrackState();
   activeTrackId = trackObj.id;
-  activeSource = t('sourceImported') + trackObj.name;
-  route = [...trackObj.route];
+  activeSource = trackObj.name;
+  route = trackObj.route.map(p=>p.slice());
   ele = [...trackObj.ele];
+  routeBreaks = [...(trackObj.breaks || [])];
+  breakpoints.splice(0,breakpoints.length,...(trackObj.breakpoints || []));
+  annos.splice(0,annos.length,...(trackObj.annotations || []).map(cleanAnnotation));
+  segmentPlans = structuredClone(trackObj.segmentPlans || []);
+  routeRevision = trackObj.revision || 1;
+  routeRole = trackObj.role || 'main';
   const pref = computePrefix(route, ele);
-  prefDist = pref.prefDist;
-  prefUp = pref.prefUp;
-  prefDown = pref.prefDown;
+  prefDist = pref.prefDist; prefUp = pref.prefUp; prefDown = pref.prefDown;
 }
 
 function syncAnalysisTargetUI() {
@@ -1623,7 +1632,7 @@ function syncElevControlsFromState() {
 }
 
 function restoreProject(obj) {
-  if (!obj || !Array.isArray(obj.route) || obj.route.length < 2) {
+  if (!obj || !Array.isArray(obj.route) || obj.route.length === 1) {
     throw new Error(currentLang === 'en' ? 'Invalid project file: missing route' : '工程文件无效：缺少轨迹');
   }
 
@@ -1634,7 +1643,7 @@ function restoreProject(obj) {
 
   (obj.tracks || []).forEach((t, i) => {
     if (!Array.isArray(t.route) || t.route.length < 2) return;
-    const pref = computePrefix(t.route, t.ele || []);
+    const pref = computePrefix(t.route, t.ele || [], t.breaks || []);
     const color = t.color || palette[i % palette.length];
     const layer = L.polyline(t.route, {color, weight:2, opacity:0.8}).addTo(importedLayer);
     tracks.push({
@@ -1701,11 +1710,11 @@ function restoreProject(obj) {
   renderBreakpointAnalysis();
 }
 
-const map = L.map('map');
+const map = L.map('map').setView([31.2,121.4],8);
 const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom:19, attribution:'Tiles &copy; Esri', crossOrigin: true}).addTo(map);
 const topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {maxZoom:17, attribution:'&copy; OpenTopoMap', crossOrigin: true});
 const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19, attribution:'&copy; OpenStreetMap', crossOrigin: true});
-const hill = L.tileLayer('https://tiles.wmflabs.org/hillshading/{z}/{x}/{y}.png', {maxZoom:15, opacity:0.55, attribution:'&copy; Wikimedia hillshading', crossOrigin: true}).addTo(map);
+const hill = L.tileLayer('https://tiles.wmflabs.org/hillshading/{z}/{x}/{y}.png', {maxZoom:15, opacity:0.55, attribution:'&copy; Wikimedia hillshading', crossOrigin: true});
 
 const activeLayer = L.layerGroup().addTo(map);
 const segmentLayer = L.layerGroup().addTo(map);
@@ -1722,7 +1731,7 @@ function renderLayerControl() {
   const overlayLabels = currentLang === 'en'
     ? {'Hillshade': hill, 'Active Track': activeLayer, 'Selected Segment': segmentLayer, 'Imported Tracks': importedLayer, 'Annotations': annoLayer, 'Breakpoints': bpLayer}
     : {'阴影地形': hill, '当前轨迹': activeLayer, '当前截取段': segmentLayer, '导入轨迹': importedLayer, '标注': annoLayer, '断点': bpLayer};
-  layerControl = L.control.layers(baseLabels, overlayLabels, {collapsed:false}).addTo(map);
+  layerControl = L.control.layers(baseLabels, overlayLabels, {collapsed:window.matchMedia('(max-width:900px)').matches}).addTo(map);
 }
 renderLayerControl();
 
@@ -1739,30 +1748,8 @@ function hav(lat1, lon1, lat2, lon2) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-function computePrefix(routePts, eleArr) {
-  const pd=[0];
-  for (let i=1;i<routePts.length;i++) pd.push(pd[pd.length-1] + hav(routePts[i-1][0],routePts[i-1][1],routePts[i][0],routePts[i][1]));
-  const filled = normalizeElevationForExport(routePts, eleArr);
-  const raw = filled ? filled : eleArr.map(v => Number.isFinite(v) ? Number(v) : 0);
-  const w = Math.max(1, Math.min(25, Math.round(elevSmoothWindow) || 5));
-  const oddW = w % 2 === 0 ? w + 1 : w;
-  const h=Math.floor(oddW/2);
-  const sm=[];
-  for (let i=0;i<raw.length;i++) {
-    const a=Math.max(0,i-h), b=Math.min(raw.length,i+h+1);
-    let s=0; for (let j=a;j<b;j++) s+=raw[j];
-    sm.push(s/(b-a));
-  }
-  const series = elevCalcMode === 'raw' ? raw : sm;
-  const threshold = elevCalcMode === 'smooth_threshold' ? Math.max(0, Number(elevThreshold) || 0) : 0;
-  const pu=[0], pdown=[0];
-  for (let i=1;i<series.length;i++) {
-    const de=series[i]-series[i-1];
-    let u=pu[pu.length-1], d=pdown[pdown.length-1];
-    if (Math.abs(de)>=threshold) { if (de>0) u+=de; else d+=-de; }
-    pu.push(u); pdown.push(d);
-  }
-  return {prefDist:pd, prefUp:pu, prefDown:pdown, elevFilled: filled};
+function computePrefix(routePts, eleArr, breaks = routePts === route ? routeBreaks : []) {
+  return RouteCore.compute(routePts, eleArr, breaks, {mode:elevCalcMode, window:elevSmoothWindow, threshold:elevThreshold});
 }
 
 function updateStats() {
@@ -1786,8 +1773,8 @@ function updateStats() {
   const max = route.length - 1;
   $('totalPts').textContent = route.length;
   $('totalDist').textContent = (prefDist[max]/1000).toFixed(2) + ' km';
-  $('totalUp').textContent = prefUp[max].toFixed(0) + ' m';
-  $('totalDown').textContent = prefDown[max].toFixed(0) + ' m';
+  $('totalUp').textContent = elevationStat(prefUp[max]);
+  $('totalDown').textContent = elevationStat(prefDown[max]);
   const sw = Math.max(1, Math.min(25, Math.round(elevSmoothWindow) || 5));
   const modeText = elevCalcMode === 'raw'
     ? (currentLang === 'en' ? 'raw cumulative' : '原始累计')
@@ -1805,7 +1792,6 @@ function redrawActiveRoute(skipImportedPlacemarkMerge) {
   activeLayer.clearLayers();
   segmentLayer.clearLayers();
   annoLayer.clearLayers();
-  annos.length = 0;
   renderAnnoList();
 
   if (!route || route.length < 2) {
@@ -1826,7 +1812,7 @@ function redrawActiveRoute(skipImportedPlacemarkMerge) {
     return;
   }
 
-  baseLine = L.polyline(route, {color:'#ffcc00', weight:3, opacity:0.85}).addTo(activeLayer);
+  baseLine = L.polyline(RouteCore.parts(route, routeBreaks), {color:'#ffcc00', weight:3, opacity:0.85}).addTo(activeLayer);
   segLine = L.polyline([], {color:'#e53935', weight:4, opacity:0.95}).addTo(segmentLayer);
   startMarker = L.circleMarker(route[0], {radius:6, color:'#2e7d32', fillColor:'#2e7d32', fillOpacity:1}).addTo(segmentLayer);
   endMarker = L.circleMarker(route[route.length-1], {radius:6, color:'#6a1b9a', fillColor:'#6a1b9a', fillOpacity:1}).addTo(segmentLayer);
@@ -1835,17 +1821,21 @@ function redrawActiveRoute(skipImportedPlacemarkMerge) {
 
   const max = route.length - 1;
   $('startRange').max = max; $('endRange').max = max;
-  $('startRange').value = Math.floor(max*0.2);
-  $('endRange').value = Math.floor(max*0.8);
+  $('startRange').value = 0;
+  $('endRange').value = max;
   updateSegment();
   renderLiveProfile(Number($('startRange').value), Number($('endRange').value));
   updateStats();
   if (!skipImportedPlacemarkMerge) mergeImportedPlacemarksIntoAnnos();
+  refreshAnnoMarkers();
+  renderPlanner();
 }
 
 function segStats(i,j) {
   const a=Math.min(i,j), b=Math.max(i,j);
-  return {a,b, dist:prefDist[b]-prefDist[a], up:prefUp[b]-prefUp[a], down:prefDown[b]-prefDown[a]};
+  const forwardUp=prefUp[b]-prefUp[a], forwardDown=prefDown[b]-prefDown[a];
+  const missing=ele.slice(a,b+1).some(v=>!Number.isFinite(v));
+  return {a,b, dist:prefDist[b]-prefDist[a], up:i>j?forwardDown:forwardUp, down:i>j?forwardUp:forwardDown, missing};
 }
 
 function renderBreakpointMarkers(previewIdx = null) {
@@ -1970,14 +1960,14 @@ function updateSegment() {
   const reversed = i > j;
   if (reversed) segPts = segPts.reverse();
 
-  segLine.setLatLngs(segPts);
+  segLine.setLatLngs(RouteCore.parts(segPts, RouteCore.clipBreaks(routeBreaks,a,b,reversed)));
   startMarker.setLatLng(route[i]);
   endMarker.setLatLng(route[j]);
 
   const st = segStats(i,j);
   $('segDist').textContent=(st.dist/1000).toFixed(2)+' km';
-  $('segUp').textContent=st.up.toFixed(0)+' m';
-  $('segDown').textContent=st.down.toFixed(0)+' m';
+  $('segUp').textContent=elevationStat(st.up,ele.slice(st.a,st.b+1));
+  $('segDown').textContent=elevationStat(st.down,ele.slice(st.a,st.b+1));
   $('segDirection').textContent = reversed ? t('segReverse') : t('segForward');
   renderLiveProfile(i, j);
 }
@@ -2008,7 +1998,7 @@ function renderLiveProfile(startIdx, endIdx) {
     return;
   }
 
-  const elev = normalizeElevationForExport(route, ele);
+  const elev = ele.some(Number.isFinite) ? ele.map(v=>Number.isFinite(v)?v:null) : null;
   if (!elev) {
     ctx.fillStyle = '#666';
     ctx.font = '13px sans-serif';
@@ -2020,7 +2010,8 @@ function renderLiveProfile(startIdx, endIdx) {
   const x0 = padL, y0 = H - padB, x1 = W - padR, y1 = padT;
   const pw = x1 - x0, ph = y0 - y1;
   const total = Math.max(1, prefDist[prefDist.length - 1]);
-  const minE = Math.min(...elev), maxE = Math.max(...elev);
+  const knownE=elev.filter(Number.isFinite);
+  const minE = knownE.reduce((a,b)=>Math.min(a,b),Infinity), maxE = knownE.reduce((a,b)=>Math.max(a,b),-Infinity);
   const span = Math.max(1, maxE - minE);
   const eMin = minE - span * 0.05, eMax = maxE + span * 0.05;
   const eSpan = Math.max(1, eMax - eMin);
@@ -2046,9 +2037,10 @@ function renderLiveProfile(startIdx, endIdx) {
   ctx.beginPath();
   for (let i = 0; i < elev.length; i++) {
     const x = xOf(prefDist[i]), y = yOf(elev[i]);
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    if(elev[i]===null)continue;
+    if(i===0 || elev[i-1]===null || routeBreaks.includes(i))ctx.moveTo(x,y);else ctx.lineTo(x,y);
   }
-  ctx.strokeStyle = '#334155';
+  ctx.strokeStyle = document.documentElement.dataset.theme==='dark'?'#cbd5e1':'#334155';
   ctx.lineWidth = 2;
   ctx.stroke();
 
@@ -2063,14 +2055,14 @@ function renderLiveProfile(startIdx, endIdx) {
   ctx.fillStyle = '#16a34a';
   ctx.beginPath(); ctx.arc(sx, sy, 4.5, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#166534';
-  ctx.fillText(`${t('profileStart')} ${Math.round(elev[si])}m`, Math.min(x1 - 74, sx + 6), Math.max(y1 + 12, sy - 8));
+  ctx.fillText(`${t('profileStart')} ${elev[si]===null?'?':Math.round(elev[si])+'m'}`, Math.min(x1 - 74, sx + 6), Math.max(y1 + 12, sy - 8));
 
   ctx.strokeStyle = 'rgba(220,38,38,0.55)';
   ctx.beginPath(); ctx.moveTo(ex, y0); ctx.lineTo(ex, ey); ctx.stroke();
   ctx.fillStyle = '#dc2626';
   ctx.beginPath(); ctx.arc(ex, ey, 4.5, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#991b1b';
-  ctx.fillText(`${t('profileEnd')} ${Math.round(elev[ei])}m`, Math.min(x1 - 74, ex + 6), Math.max(y1 + 12, ey - 8));
+  ctx.fillText(`${t('profileEnd')} ${elev[ei]===null?'?':Math.round(elev[ei])+'m'}`, Math.min(x1 - 74, ex + 6), Math.max(y1 + 12, ey - 8));
 
   // axis labels
   ctx.fillStyle = '#475569';
@@ -2116,13 +2108,13 @@ function refreshAnnoMarkers() {
       mediaHtml = `<br/><a href="${escapeHtmlAttr(a.linkUrl)}" target="_blank" rel="noopener noreferrer">${t('annoOpenLink')}</a>`;
     }
     const importTag = a.fromImport ? ` ${t('importedPlacemarkTag')}` : '';
-    marker.bindPopup(`<b>${annoTypePopupLabel(a)}</b>${importTag}<br/>${t('annoIdxLabel')}: ${a.idx}<br/>${a.text || ''}${mediaHtml}`);
+    marker.bindPopup(`<b>${annoTypePopupLabel(a)}</b>${importTag}<br/>${t('annoIdxLabel')}: ${a.idx}<br/>${escapeHtmlAttr(a.text || '')}${mediaHtml}`);
     a.marker = marker;
 
     const labelPos = (Array.isArray(a.labelLatLng) && a.labelLatLng.length === 2) ? a.labelLatLng : a.latlng;
     const labelIcon = L.divIcon({
       className: 'anno-label-wrap',
-      html: `<div class="anno-label">${a.text || ''}</div>`,
+      html: `<div class="anno-label">${escapeHtmlAttr(a.text || '')}</div>`,
       iconSize: null
     });
     const labelMarker = L.marker(labelPos, {icon: labelIcon, draggable: true}).addTo(annoLayer);
@@ -2140,7 +2132,7 @@ function renderTrackList() {
   tracks.forEach((trackObj) => {
     const li = document.createElement('li');
     const activeTag = activeTrackId === trackObj.id ? ` <b style="color:#2563eb">${t('currentAnalyzingTag')}</b>` : '';
-    li.innerHTML = `<span class='t' style='color:${trackObj.color}'>${trackObj.name} (${currentLang === 'en' ? `${trackObj.route.length} pts` : `${trackObj.route.length}点`})${activeTag}</span>`;
+    li.innerHTML = `<span class='t' style='color:${escapeHtmlAttr(trackObj.color)}'>${escapeHtmlAttr(trackObj.name)} (${currentLang === 'en' ? `${trackObj.route.length} pts` : `${trackObj.route.length}点`})${activeTag}</span>`;
     const useBtn = document.createElement('button'); useBtn.textContent=t('setAsAnalysis');
     useBtn.onclick = () => {
       applyTrackAsActive(trackObj);
@@ -2359,15 +2351,18 @@ function extractKmlPointPlacemarks(xml) {
   return out;
 }
 
+function gpxNodes(root,name){return [...root.getElementsByTagNameNS('*',name)];}
+
 function parseGpxWaypoints(xml) {
   const out = [];
-  xml.querySelectorAll('wpt').forEach((w) => {
+  gpxNodes(xml,'wpt').forEach((w) => {
+    if(!w.hasAttribute('lat')||!w.hasAttribute('lon'))return;
     const lat = Number(w.getAttribute('lat'));
     const lon = Number(w.getAttribute('lon'));
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
-    const ne = w.getElementsByTagName('name')[0];
-    const de = w.getElementsByTagName('desc')[0];
-    const ee = w.getElementsByTagName('ele')[0];
+    const ne = gpxNodes(w,'name')[0];
+    const de = gpxNodes(w,'desc')[0];
+    const ee = gpxNodes(w,'ele')[0];
     const name = stripHtmlSimple(ne ? ne.textContent : '');
     const descRaw = de ? de.textContent : '';
     const media = extractKmlDescriptionMedia(descRaw);
@@ -2406,9 +2401,7 @@ function mergeImportedPlacemarksIntoAnnos() {
   if (!activeTr) {
     activeTr = tracks.find((tr) => Array.isArray(tr.placemarks) && tr.placemarks.length && routeMatchesImportedTrack(route, tr));
   }
-  if (!activeTr && tracks.length === 1 && tracks[0].placemarks && tracks[0].placemarks.length) {
-    activeTr = tracks[0];
-  }
+
   if (!activeTr) return;
   const list = activeTr && Array.isArray(activeTr.placemarks) ? activeTr.placemarks : [];
   if (!list.length) return;
@@ -2418,6 +2411,7 @@ function mergeImportedPlacemarksIntoAnnos() {
     const key = placemarkSuppressionKey(pm.lat, pm.lng);
     if (suppressed.has(key)) return;
     const latlng = [pm.lat, pm.lng];
+    if(annos.some(a=>a.fromImport && placemarkSuppressionKey(...a.latlng)===key)) return;
     const idx = nearestIdx({ lat: pm.lat, lng: pm.lng }, route);
     const plain = (pm.plainDescription != null ? pm.plainDescription : pm.description) || '';
     let text = (pm.name && String(pm.name).trim()) ? String(pm.name).trim() : '';
@@ -2428,9 +2422,11 @@ function mergeImportedPlacemarksIntoAnnos() {
     }
     if (!text) text = currentLang === 'en' ? `Waypoint ${i + 1}` : `途经点${i + 1}`;
     annos.push({
-      idx,
+      idx: hav(pm.lat,pm.lng,route[idx][0],route[idx][1])<=100 ? idx : null,
       text,
-      type: 'note',
+      notes: plain,
+      verified: 'unverified',
+      type: pm.type || 'note',
       color: pm.color || '#2563eb',
       imageData: null,
       imageUrl: pm.imageUrl || null,
@@ -2518,7 +2514,7 @@ function appendRouteFromKmlCoordinatesText(raw, route, ele) {
   s.split(/\s+/).forEach((tok) => {
     if (!tok) return;
     const p = tok.split(',');
-    if (p.length < 2) return;
+    if (p.length < 2 || !p[0].trim() || !p[1].trim()) return;
     const lon = Number(String(p[0]).trim());
     const lat = Number(String(p[1]).trim());
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
@@ -2547,12 +2543,15 @@ function parseKmlText(text, name) {
   const route = [];
   const ele = [];
   const placemarks = extractKmlPointPlacemarks(xml);
+  const breaks = [];
 
   // 1) 收集所有 LineString 下的 coordinates（多段轨迹会多段拼接）
   const lineNodes = kmlLineStringCoordinateNodes(xml);
   lineNodes.forEach((node) => {
     const raw = node.textContent != null ? node.textContent : '';
+    const previous=route.length;
     appendRouteFromKmlCoordinatesText(raw, route, ele);
+    if(previous && route.length>previous) breaks.push(previous);
   });
 
   // 2) 若没有 LineString，则尝试 gx:Track/gx:coord
@@ -2584,37 +2583,42 @@ function parseKmlText(text, name) {
   // 去掉连续重复点
   const cleanRoute = [];
   const cleanEle = [];
+  const cleanBreaks = [];
   for (let i = 0; i < route.length; i++) {
     const cur = route[i];
     const last = cleanRoute[cleanRoute.length - 1];
-    if (!last || cur[0] !== last[0] || cur[1] !== last[1]) {
+    if (breaks.includes(i) && cleanRoute.length) cleanBreaks.push(cleanRoute.length);
+    if (RouteCore.validPoint(cur) && (breaks.includes(i) || !last || cur[0] !== last[0] || cur[1] !== last[1])) {
       cleanRoute.push(cur);
       cleanEle.push(ele[i]);
     }
   }
 
   if (cleanRoute.length < 2) throw new Error(currentLang === 'en' ? `${name}: no valid route (may contain only points)` : `${name} 无有效轨迹（可能只有点标注）`);
-  return {name, route: cleanRoute, ele: cleanEle, placemarks};
+  return {name, route: cleanRoute, ele: cleanEle, breaks:cleanBreaks, placemarks};
 }
 
 function parseGpxText(text, name) {
   const xml = new DOMParser().parseFromString(text, 'text/xml');
-  const pts = xml.querySelectorAll('trkpt');
-  const route=[], ele=[];
-  pts.forEach(p => {
-    const lat = Number(p.getAttribute('lat')), lon = Number(p.getAttribute('lon'));
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
-    route.push([lat, lon]);
-    const e = p.querySelector('ele');
-    ele.push(e ? Number(e.textContent) : null);
+  if (xml.getElementsByTagName('parsererror').length) throw new Error('Invalid GPX XML');
+  const groups = gpxNodes(xml,'trkseg');
+  if (!groups.length) groups.push(...gpxNodes(xml,'rte'));
+  if (!groups.length) groups.push(xml);
+  const points=[], heights=[], breaks=[];
+  groups.forEach(group=>{
+    const pts=[...gpxNodes(group,'trkpt'),...gpxNodes(group,'rtept')];
+    const valid=pts.filter(p=>p.hasAttribute('lat')&&p.hasAttribute('lon')).map(p=>({p:[Number(p.getAttribute('lat')),Number(p.getAttribute('lon'))], e:gpxNodes(p,'ele')[0]}))
+      .filter(x=>RouteCore.validPoint(x.p));
+    if (!valid.length) return;
+    if(points.length) breaks.push(points.length);
+    valid.forEach(x=>{ points.push(x.p); heights.push(x.e && x.e.textContent.trim() && Number.isFinite(Number(x.e.textContent))?Number(x.e.textContent):null); });
   });
-  const placemarks = parseGpxWaypoints(xml);
-  if (route.length<2) throw new Error(currentLang === 'en' ? `${name}: no valid coordinates` : `${name} 无有效坐标`);
-  return {name, route, ele, placemarks};
+  if (points.length<2) throw new Error(`${name}: no valid coordinates`);
+  return {name, route:points, ele:heights, breaks, placemarks:parseGpxWaypoints(xml)};
 }
 
 function pushImportedTrack(parsed) {
-  const pref = computePrefix(parsed.route, parsed.ele);
+  const pref = computePrefix(parsed.route, parsed.ele, parsed.breaks || []);
   const color = palette[tracks.length % palette.length];
   const layer = L.polyline(parsed.route, {color, weight:2, opacity:0.8}).addTo(importedLayer);
   tracks.push({
@@ -2627,6 +2631,9 @@ function pushImportedTrack(parsed) {
     prefDown: pref.prefDown,
     color,
     layer,
+    breaks: parsed.breaks || [],
+    annotations: parsed.annotations || [],
+    breakpoints: [], segmentPlans: [], revision:1, role:'main',
     placemarks: parsed.placemarks || [],
     suppressedPlacemarkKeys: []
   });
@@ -2692,6 +2699,8 @@ $('trackInput').addEventListener('change', async (e) => {
     redrawActiveRoute();
     renderTrackList();
   }
+  if(typeof observeChanges==='function')observeChanges();
+  e.target.value='';
 });
 
 function open2buluTrackSearch(keyword) {
@@ -2738,6 +2747,7 @@ if ($('fetchUrlBtn')) {
       redrawActiveRoute();
       renderTrackList();
       if (urlEl) urlEl.value = '';
+      observeChanges();
     } catch (err) {
       const msg = err && err.message != null ? String(err.message) : '';
       if (msg === t('fetchUrlBad')) {
@@ -2769,7 +2779,7 @@ function renderClipList() {
   clips.forEach((c, i) => {
     const li=document.createElement('li');
     const km=(c.dist/1000).toFixed(2);
-    li.innerHTML=`<span class='t'>${i+1}. ${c.trackName} [${c.a}-${c.b}] ${c.reverse?(currentLang === 'en' ? '(Reverse)' : '(反向)'):''} ${km}km</span>`;
+    li.innerHTML=`<span class='t'>${i+1}. ${escapeHtmlAttr(c.trackName)} [${c.a}-${c.b}] ${c.reverse?(currentLang === 'en' ? '(Reverse)' : '(反向)'):''} ${km}km</span>`;
     const upBtn=document.createElement('button'); upBtn.textContent=t('up');
     upBtn.onclick=()=>{ if(i>0){ [clips[i-1],clips[i]]=[clips[i],clips[i-1]]; renderClipList(); } };
     const downBtn=document.createElement('button'); downBtn.textContent=t('down');
@@ -2845,7 +2855,9 @@ $('pickBtn').onclick = () => {
 
 map.on('click', (e) => {
   if (pickMode) {
-    const idx = nearestIdx(e.latlng, route);
+    if(!route.length)return;
+    const idx = nearestClose(e.latlng);
+    if(idx===null){alert(say('请点击路线附近（100 米内）','Click within 100 m of the route'));return;}
     if (pickCount===0) {
       $('startRange').value=idx; pickCount=1; $('pickBtn').textContent=t('pickEnd');
     } else {
@@ -2870,7 +2882,7 @@ function renderAnnoList() {
     const li = document.createElement('li');
     const picTag = a.imageData ? t('noAnnoImage') : '';
     const impTag = a.fromImport ? ` ${t('importedPlacemarkTag')}` : '';
-    li.innerHTML = `<span class='t'>#${i+1} [${a.idx}] <span style="color:${a.color || '#111827'}">●</span> ${a.text}${picTag}${impTag}</span>`;
+    li.innerHTML = `<span class='t'>#${i+1} [${a.idx}] <span style="color:${a.color || '#111827'}">●</span> ${escapeHtmlAttr(a.text)}${picTag}${impTag}</span>`;
     const fly=document.createElement('button'); fly.textContent=t('fly'); fly.onclick=()=>{ map.setView(a.latlng,16); if (a.marker) a.marker.openPopup(); };
     const edit=document.createElement('button'); edit.textContent=t('edit'); edit.onclick=async ()=>{ await editAnno(i); };
     const del=document.createElement('button'); del.textContent=t('del'); del.onclick=()=>{
@@ -3027,7 +3039,7 @@ function exportElevationChartPng() {
     alert(t('noRouteAnalyze'));
     return;
   }
-  const elev = normalizeElevationForExport(route, ele);
+  const elev = ele.some(Number.isFinite) ? ele.map(v=>Number.isFinite(v)?v:null) : null;
   if (!elev) {
     alert(t('noEle'));
     return;
@@ -3051,7 +3063,8 @@ function exportElevationChartPng() {
   const x0 = padL, y0 = H - padB, x1 = W - padR, y1 = padT;
   const pw = x1 - x0, ph = y0 - y1;
   const totalM = Math.max(1, dist[dist.length - 1]);
-  const minE = Math.min(...elev), maxE = Math.max(...elev);
+  const knownE=elev.filter(Number.isFinite);
+  const minE = knownE.reduce((a,b)=>Math.min(a,b),Infinity), maxE = knownE.reduce((a,b)=>Math.max(a,b),-Infinity);
   const span = Math.max(1, maxE - minE);
   const eMin = Math.floor((minE - span * 0.05) / 10) * 10;
   const eMax = Math.ceil((maxE + span * 0.05) / 10) * 10;
@@ -3137,7 +3150,7 @@ $('exportKmlBtn').onclick = () => {
     alert(t('noRouteExport'));
     return;
   }
-  const name = safeName(activeSource || 'route_export');
+  const name = `${safeName(activeSource || 'route')}_v${routeRevision}_${routeRole}`;
   const kml = routeToKml(route, annos, name);
   downloadText(`${name}.kml`, kml, 'application/vnd.google-earth.kml+xml;charset=utf-8');
 };
@@ -3147,7 +3160,7 @@ $('exportGpxBtn').onclick = () => {
     alert(t('noRouteExport'));
     return;
   }
-  const name = safeName(activeSource || 'route_export');
+  const name = `${safeName(activeSource || 'route')}_v${routeRevision}_${routeRole}`;
   const gpx = routeToGpx(route, annos, name);
   downloadText(`${name}.gpx`, gpx, 'application/gpx+xml;charset=utf-8');
 };
@@ -3157,7 +3170,7 @@ $('exportGeoBtn').onclick = () => {
     alert(t('noRouteExport'));
     return;
   }
-  const name = safeName(activeSource || 'route_export');
+  const name = `${safeName(activeSource || 'route')}_v${routeRevision}_${routeRole}`;
   const geo = routeToGeoJSON(route, annos, name);
   downloadText(`${name}.geojson`, geo, 'application/geo+json;charset=utf-8');
 };
@@ -3191,7 +3204,7 @@ $('loadProjectInput').addEventListener('change', async (e) => {
 $('saveLocalBtn').onclick = () => {
   try {
     const raw = JSON.stringify(serializeProject());
-    if (raw.length > LS_PROJECT_MAX_BYTES) {
+    if (new Blob([raw]).size > LS_PROJECT_MAX_BYTES) {
       alert(t('localTooLarge'));
       return;
     }
@@ -3203,7 +3216,7 @@ $('saveLocalBtn').onclick = () => {
 };
 
 $('loadLocalBtn').onclick = () => {
-  const raw = localStorage.getItem(LS_PROJECT_KEY);
+  const raw = localRead(LS_PROJECT_KEY);
   if (!raw) {
     alert(t('noLocalProject'));
     return;
@@ -3253,9 +3266,8 @@ $('loadLocalBtn').onclick = () => {
 })();
 
 function tryOfferLocalRestore() {
-  if (sessionStorage.getItem('tp_restore_offered')) return;
-  sessionStorage.setItem('tp_restore_offered', '1');
-  const raw = localStorage.getItem(LS_PROJECT_KEY);
+  try{if (sessionStorage.getItem('tp_restore_offered')) return;sessionStorage.setItem('tp_restore_offered', '1');}catch{return;}
+  const raw = localRead(LS_PROJECT_KEY);
   if (!raw) return;
   if (!confirm(t('autoRestoreAsk'))) return;
   try {
@@ -3302,10 +3314,12 @@ $('elevThresholdInput').addEventListener('change', (e) => {
 
 function setToolTab(mode) {
   const stitch = mode === 'stitch';
+  window.currentToolMode=mode;
   $('tabStitch').classList.toggle('active', stitch);
   $('tabAnalysis').classList.toggle('active', !stitch);
   document.querySelectorAll('.tool-stitch').forEach((el) => {
-    el.style.display = stitch ? '' : 'none';
+    const always=el.contains($('totalDist')) || el.contains($('liveProfileCanvas'));
+    el.style.display = (stitch || always) ? '' : 'none';
   });
   document.querySelectorAll('.tool-analysis').forEach((el) => {
     el.style.display = stitch ? 'none' : '';
@@ -3333,12 +3347,14 @@ function recomputeByElevationOptions() {
     prefDown = [];
   }
   tracks.forEach((t) => {
-    const pref = computePrefix(t.route, t.ele || []);
+    const pref = computePrefix(t.route, t.ele || [], t.breaks || []);
     t.prefDist = pref.prefDist;
     t.prefUp = pref.prefUp;
     t.prefDown = pref.prefDown;
   });
-  redrawActiveRoute();
+  updateSegment();
+  updateStats();
+  renderPlanner();
   renderTrackList();
 }
 
@@ -3364,6 +3380,9 @@ function recomputeByElevationOptions() {
   });
 })();
 
+</script>
+<script src="planner.js"></script>
+<script>
 // 初始化
 $('elevModeSelect').value = elevCalcMode;
 $('elevSmoothInput').value = String(elevSmoothWindow);
@@ -3383,7 +3402,7 @@ function applyThemeDark(isDark) {
   if (btn) btn.textContent = isDark ? t('themeLight') : t('themeDark');
 }
 function readInitialDark() {
-  const s = localStorage.getItem(THEME_KEY);
+  const s = localRead(THEME_KEY);
   if (s === 'dark') return true;
   if (s === 'light') return false;
   return window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -3391,26 +3410,27 @@ function readInitialDark() {
 function initTheme() {
   applyThemeDark(readInitialDark());
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-    if (localStorage.getItem(THEME_KEY) !== null) return;
+    if (localRead(THEME_KEY) !== null) return;
     applyThemeDark(e.matches);
   });
 }
 $('themeToggle').onclick = () => {
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   applyThemeDark(!isDark);
-  localStorage.setItem(THEME_KEY, !isDark ? 'dark' : 'light');
+  try{localStorage.setItem(THEME_KEY, !isDark ? 'dark' : 'light');}catch{}
 };
 initTheme();
 if ($('langToggle')) {
   $('langToggle').addEventListener('click', () => {
     currentLang = currentLang === 'zh' ? 'en' : 'zh';
-    localStorage.setItem(LS_LANG_KEY, currentLang);
+    try{localStorage.setItem(LS_LANG_KEY, currentLang);}catch{}
     applyLanguage();
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     applyThemeDark(isDark);
   });
 }
 applyLanguage();
+initPlanner();
 
 tryOfferLocalRestore();
 </script>

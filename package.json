@@ -1,0 +1,10 @@
+{
+  "name": "trace-planner",
+  "private": true,
+  "version": "3.0.0",
+  "scripts": {
+    "test": "node --test tests/route-core.test.cjs",
+    "test:browser": "node tests/browser.test.cjs"
+  },
+  "devDependencies": { "playwright": "1.62.1" }
+}
