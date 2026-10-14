@@ -38,8 +38,10 @@ const server=http.createServer((req,res)=>{const name=decodeURIComponent(new URL
   assert.equal(await page.locator('#demInput').evaluate(el=>el.multiple),true);
   await page.setInputFiles('#demInput',files);
   await page.waitForFunction(()=>!!Terrain.state.result,{},{timeout:90000});
+  assert.notEqual(await page.inputValue('#demInput'),'');
   // Files often live in different folders. Separate picker selections must accumulate.
   await page.click('#demClear');await page.waitForFunction(()=>Terrain.state.sources.length===0&&!Terrain.state.result);
+  assert.equal(await page.inputValue('#demInput'),'');
   await page.setInputFiles('#demInput',[files[0]]);
   await page.waitForFunction(()=>Terrain.state.sources.length===1&&Terrain.state.result?.stats.used.length===1);
   assert.ok(await page.evaluate(()=>Terrain.state.result.known/(Terrain.state.result.grid.width*Terrain.state.result.grid.height))<1);
@@ -52,6 +54,7 @@ const server=http.createServer((req,res)=>{const name=decodeURIComponent(new URL
   const firstName=typeof files[0]==='string'?path.basename(files[0]):files[0].name;
   await page.getByRole('button',{name:`移除 ${firstName}`,exact:true}).first().click();
   await page.waitForFunction(()=>Terrain.state.sources.length===1&&Terrain.state.result?.stats.used.length===1);
+  assert.equal(await page.inputValue('#demInput'),'');
   await page.setInputFiles('#demInput',[files[0]]);
   await page.waitForFunction(()=>Terrain.state.sources.length===2&&Terrain.state.result?.stats.used.length===2);
   const info=await page.evaluate(()=>{const {result:r,sources}=Terrain.state;return {files:sources.length,width:r.grid.width,height:r.grid.height,coverage:r.known/(r.grid.width*r.grid.height),interval:r.interval,lines:r.lines.length,min:r.min,max:r.max,stats:r.stats,metadata:sources.map(s=>({name:s.name,width:s.width,height:s.height,resolution:s.resolution,bounds:s.bounds}))};});

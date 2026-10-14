@@ -54,7 +54,7 @@
     for(const s of sources) {
       const li=document.createElement('li'),label=document.createElement('span');label.textContent=`${s.name} · ${(s.size/1048576).toFixed(1)} MB · ${s.width}×${s.height} · ${s.overviews} ${text('概览','overviews')}`;
       const remove=document.createElement('button');remove.type='button';remove.textContent=text('移除','Remove');remove.setAttribute('aria-label',text(`移除 ${s.name}`,`Remove ${s.name}`));remove.disabled=busy;
-      remove.onclick=()=>{clearTimeout(timer);ensureWorker().postMessage({type:'remove',token:++token,id:s.id});setBusy(true);$('demCancel').disabled=true;status('正在移除 DEM…','Removing DEM…');};
+      remove.onclick=()=>{clearTimeout(timer);$('demInput').value='';ensureWorker().postMessage({type:'remove',token:++token,id:s.id});setBusy(true);$('demCancel').disabled=true;status('正在移除 DEM…','Removing DEM…');};
       li.append(label,remove);
       list.append(li);
       if(!result)L.rectangle([[s.bounds[1],s.bounds[0]],[s.bounds[3],s.bounds[2]]],{color:'#0f766e',weight:1,fill:false,interactive:false}).addTo(coverage);
@@ -225,7 +225,7 @@
     $('demInput').onclick=e=>{e.target.value='';};
     $('demRender').onclick=()=>render(true);$('demExport').onclick=exportMap;
     $('demCancel').onclick=()=>{clearTimeout(timer);if(worker)worker.postMessage({type:'cancel',token:++token});setBusy(false);signature='';status('已取消，可缩小范围后重试。','Cancelled; narrow the crop and retry.');};
-    $('demClear').onclick=()=>{clearTimeout(timer);stopSelection();if(selection){map.removeLayer(selection);selection=null;}if(worker)worker.postMessage({type:'clear',token:++token});sources=[];expected=[];signature='';clearResult();renderFiles();setBusy(false);status('DEM 已移除','DEM removed');observeChanges();};
+    $('demClear').onclick=()=>{clearTimeout(timer);$('demInput').value='';stopSelection();if(selection){map.removeLayer(selection);selection=null;}if(worker)worker.postMessage({type:'clear',token:++token});sources=[];expected=[];signature='';clearResult();renderFiles();setBusy(false);status('DEM 已移除','DEM removed');observeChanges();};
     for(const id of ['demCropMode','demBuffer','demInterval','demShade','demVisible','demAuto'])$(id).onchange=()=>{
       options=controls();options.bufferKm=Math.max(.1,Math.min(20,options.bufferKm||2));syncControls();
       if(overlay){if(options.visible)overlay.addTo(map);else map.removeLayer(overlay);}
