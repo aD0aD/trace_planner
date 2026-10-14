@@ -1,6 +1,6 @@
 const {chromium}=require(process.env.PLAYWRIGHT_PATH||'playwright');
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
-const root=path.resolve(__dirname,'..');
+const root=path.resolve(process.env.TRACE_TEST_ROOT||path.join(__dirname,'..'));
 const types={'.js':'application/javascript','.html':'text/html','.css':'text/css','.png':'image/png'};
 const server=http.createServer((req,res)=>{const name=decodeURIComponent(new URL(req.url,'http://localhost').pathname),file=path.join(root,name==='/'?'index.html':name);if(!file.startsWith(root+path.sep)){res.writeHead(403).end();return;}try{res.setHeader('Content-Type',types[path.extname(file)]||'text/plain');res.end(fs.readFileSync(file));}catch{res.writeHead(404).end();}});
 (async()=>{
@@ -41,6 +41,33 @@ const server=http.createServer((req,res)=>{const name=decodeURIComponent(new URL
  await page.fill('#annoNotesEdit','Water verified on reconnaissance');await page.selectOption('#annoVerifiedEdit','verified');
  await page.locator('#annotationForm button[type=submit]').click();assert.equal(await page.evaluate(()=>annos[0].verified),'verified');
  assert.equal(await page.evaluate(()=>annos[0].notes),'Water verified on reconnaissance');
+ // Import identity must survive edits, route switching, persistence, deletion and undo.
+ const annotationProject=await page.evaluate(()=>serializeProject());
+ const kml='<kml xmlns="http://www.opengis.net/kml/2.2"><Document><Placemark><LineString><coordinates>120,30,100 120.01,30,120</coordinates></LineString></Placemark><Placemark><name>Imported water</name><Point><coordinates>120,30</coordinates></Point></Placemark><Placemark><name>Camp at water</name><Point><coordinates>120,30</coordinates></Point></Placemark></Document></kml>';
+ const importedId=await page.evaluate(text=>{const tr=pushImportedTrack(parseKmlText(text,'waypoints.kml'));applyTrackAsActive(tr);redrawActiveRoute();renderTrackList();observeChanges();return tr.id;},kml);
+ assert.equal(await page.evaluate(()=>annos.length),2);
+ assert.equal(await page.evaluate(()=>new Set(annos.map(a=>a.importId)).size),2);
+ // Exercise compatibility: projects saved before import IDs were introduced migrate before editing.
+ const legacy=await page.evaluate(()=>{const p=serializeProject();for(const a of p.annotations)delete a.importId;for(const t of p.tracks){for(const pm of t.placemarks||[])delete pm.importId;for(const a of t.annotations||[])delete a.importId;}return p;});
+ await page.evaluate(p=>restoreProject(p),legacy);
+ const waypointId=await page.evaluate(()=>annos[0].importId);assert.ok(waypointId);
+ await page.locator('#annoList li').first().getByRole('button',{name:'编辑',exact:true}).click();
+ await page.fill('#annoNameEdit','Relocated water');await page.fill('#annoLatEdit','30.0002');await page.fill('#annoLonEdit','120.0003');
+ await page.locator('#annotationForm button[type=submit]').click();
+ const assertMoved=async()=>{const a=await page.evaluate(()=>annos.map(a=>({name:a.text,position:a.latlng,id:a.importId})));assert.equal(a.length,2);assert.deepEqual(a.find(a=>a.id===waypointId),{name:'Relocated water',position:[30.0002,120.0003],id:waypointId});assert.equal(a.filter(a=>a.name==='Imported water').length,0);};
+ await page.evaluate(()=>redrawActiveRoute());await assertMoved();
+ await page.selectOption('#analysisTrackSelect',annotationProject.activeTrackId);await page.selectOption('#analysisTrackSelect',importedId);await assertMoved();
+ const movedProject=await page.evaluate(()=>serializeProject());await page.evaluate(p=>restoreProject(p),movedProject);await page.evaluate(()=>redrawActiveRoute());await assertMoved();
+ const reexported=await page.evaluate(()=>{const a=parseKmlText(routeToKml(route,annos,'edited'),'edited.kml');const b=parseGpxText(routeToGpx(route,annos,'edited'),'edited.gpx');return [a,b].map(p=>p.annotations.map(a=>({id:a.importId,position:a.latlng})));});
+ for(const a of reexported)assert.deepEqual(a.find(a=>a.id===waypointId).position,[30.0002,120.0003]);
+ // Delete a moved imported point by its source identity, while retaining the colocated camp.
+ await page.evaluate(()=>observeChanges());await page.locator('#annoList li').first().getByRole('button',{name:'删除',exact:true}).click();
+ await page.evaluate(()=>{redrawActiveRoute();observeChanges();});assert.equal(await page.evaluate(()=>annos.length),1);
+ assert.equal(await page.evaluate(()=>annos[0].text),'Camp at water');
+ const removedProject=await page.evaluate(()=>serializeProject());await page.evaluate(p=>restoreProject(p),removedProject);await page.evaluate(()=>redrawActiveRoute());assert.equal(await page.evaluate(()=>annos.length),1);
+ await page.click('#undoBtn');await page.evaluate(()=>redrawActiveRoute());await assertMoved();
+ await page.click('#redoBtn');await page.evaluate(()=>redrawActiveRoute());assert.equal(await page.evaluate(()=>annos.length),1);
+ await page.evaluate(p=>restoreProject(p),annotationProject);await page.evaluate(()=>observeChanges());
  const originalName=await page.evaluate(()=>activeSource);
  await page.fill('#routeNameInput','Leader main route');await page.locator('#routeNameInput').press('Tab');await page.waitForTimeout(100);
  await page.click('#undoBtn');assert.equal(await page.evaluate(()=>activeSource),originalName);

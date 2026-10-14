@@ -2385,6 +2385,26 @@ function placemarkSuppressionKey(lat, lng) {
   return `${Number(lat).toFixed(6)},${Number(lng).toFixed(6)}`;
 }
 
+// Imported identity survives coordinate edits and is saved with each route's source points.
+function placemarkImportId(pm) {
+  if(typeof pm.importId!=='string'||!/^import-[a-zA-Z0-9-]{1,100}$/.test(pm.importId))pm.importId=`import-${crypto.randomUUID()}`;
+  return pm.importId;
+}
+
+function linkImportedAnnotations(track,annotations) {
+  const pending=new Map();
+  for(const a of annotations)if(a.fromImport&&!a.importId) {
+    const key=placemarkSuppressionKey(...a.latlng);
+    if(!pending.has(key))pending.set(key,{items:[],next:0});pending.get(key).items.push(a);
+  }
+  for(const pm of track.placemarks||[]) {
+    const id=placemarkImportId(pm),key=placemarkSuppressionKey(pm.lat,pm.lng);
+    // Legacy projects used coordinates. Adopt an ID before the first coordinate edit.
+    const candidates=pending.get(key),legacy=candidates?.items[candidates.next++];
+    if(legacy)legacy.importId=id;
+  }
+}
+
 /** 当前工作 route 是否与某条导入轨迹完全一致（用于 activeTrackId 为空时仍能合并标注） */
 function routeMatchesImportedTrack(r, tr) {
   if (!r || !tr || !Array.isArray(tr.route) || r.length !== tr.route.length || r.length < 2) return false;
@@ -2403,15 +2423,18 @@ function mergeImportedPlacemarksIntoAnnos() {
   }
 
   if (!activeTr) return;
+  linkImportedAnnotations(activeTr,annos);
   const list = activeTr && Array.isArray(activeTr.placemarks) ? activeTr.placemarks : [];
   if (!list.length) return;
   const suppressed = new Set((activeTr.suppressedPlacemarkKeys || []).map(String));
+  const importedIds=new Set(annos.filter(a=>a.fromImport).map(a=>a.importId));
   list.forEach((pm, i) => {
     if (!Number.isFinite(pm.lat) || !Number.isFinite(pm.lng)) return;
-    const key = placemarkSuppressionKey(pm.lat, pm.lng);
-    if (suppressed.has(key)) return;
+    const key = placemarkSuppressionKey(pm.lat, pm.lng),importId=placemarkImportId(pm);
+    if (suppressed.has(importId)||suppressed.has(key)) return;
     const latlng = [pm.lat, pm.lng];
-    if(annos.some(a=>a.fromImport && placemarkSuppressionKey(...a.latlng)===key)) return;
+    if(importedIds.has(importId)) return;
+    importedIds.add(importId);
     const idx = nearestIdx({ lat: pm.lat, lng: pm.lng }, route);
     const plain = (pm.plainDescription != null ? pm.plainDescription : pm.description) || '';
     let text = (pm.name && String(pm.name).trim()) ? String(pm.name).trim() : '';
@@ -2436,7 +2459,8 @@ function mergeImportedPlacemarksIntoAnnos() {
       labelLatLng: latlng,
       marker: null,
       labelMarker: null,
-      fromImport: true
+      fromImport: true,
+      importId
     });
   });
   refreshAnnoMarkers();
@@ -2890,7 +2914,7 @@ function renderAnnoList() {
         const tr = tracks.find((x) => x.id === activeTrackId);
         if (tr && Array.isArray(a.latlng) && a.latlng.length >= 2) {
           if (!tr.suppressedPlacemarkKeys) tr.suppressedPlacemarkKeys = [];
-          tr.suppressedPlacemarkKeys.push(placemarkSuppressionKey(a.latlng[0], a.latlng[1]));
+          tr.suppressedPlacemarkKeys.push(a.importId||placemarkSuppressionKey(a.latlng[0], a.latlng[1]));
         }
       }
       annos.splice(i,1); refreshAnnoMarkers(); renderAnnoList();
@@ -3382,6 +3406,8 @@ function recomputeByElevationOptions() {
 
 </script>
 <script src="planner.js"></script>
+<script src="dem-core.js"></script>
+<script src="terrain-layer.js"></script>
 <script>
 // 初始化
 $('elevModeSelect').value = elevCalcMode;
@@ -3431,6 +3457,7 @@ if ($('langToggle')) {
 }
 applyLanguage();
 initPlanner();
+initTerrain();
 
 tryOfferLocalRestore();
 </script>
