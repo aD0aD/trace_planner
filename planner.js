@@ -11,7 +11,8 @@ function cleanAnnotation(a) {
   return {idx:Number.isInteger(a.idx)?a.idx:null,text:String(a.text||''),type:['start','end','camp','supply','risk','note','escape'].includes(a.type)?a.type:'note',
     color:/^#[0-9a-f]{6}$/i.test(a.color||'')?a.color:'#2563eb',notes:String(a.notes||''),verified:a.verified==='verified'?'verified':'unverified',
     latlng:[...a.latlng],imageData:safeUrl(a.imageData,true),imageUrl:safeUrl(a.imageUrl),linkUrl:safeUrl(a.linkUrl),
-    labelLatLng:RouteCore.validPoint(a.labelLatLng)?a.labelLatLng.slice():null,fromImport:!!a.fromImport};
+    labelLatLng:RouteCore.validPoint(a.labelLatLng)?a.labelLatLng.slice():null,fromImport:!!a.fromImport,
+    importId:typeof a.importId==='string'&&/^import-[a-zA-Z0-9-]{1,100}$/.test(a.importId)?a.importId:null};
 }
 function elevationStat(value,heights=ele) {
   const count=heights.filter(Number.isFinite).length;
@@ -21,6 +22,7 @@ function saveActiveTrackState() {
   if(route.length<2)return;
   let track=tracks.find(t=>t.id===activeTrackId);
   if(!track){track=pushImportedTrack({name:activeSource||say('工作路线','Working route'),route:route.map(p=>p.slice()),ele:[...ele],breaks:routeBreaks});activeTrackId=track.id;}
+  linkImportedAnnotations(track,annos);
   Object.assign(track,{route:route.map(p=>p.slice()),ele:[...ele],breaks:[...routeBreaks],annotations:annos.map(cleanAnnotation),
     breakpoints:[...breakpoints],segmentPlans:structuredClone(segmentPlans),revision:routeRevision,role:routeRole});
 }
@@ -46,10 +48,12 @@ restoreProject=function(p) {
     const saved=incoming.tracks[i];
     Object.assign(tr,{breaks:saved.breaks||[],annotations:(saved.annotations||[]).map(cleanAnnotation),breakpoints:saved.breakpoints||[],
       segmentPlans:saved.segmentPlans||[],revision:saved.revision||1,role:saved.role||'main'});
+    linkImportedAnnotations(tr,tr.annotations);
     tr.layer.setLatLngs(RouteCore.parts(tr.route,tr.breaks));
     tr.layer.on('click',()=>{applyTrackAsActive(tr);redrawActiveRoute();renderTrackList();observeChanges();});
   });
   annos.splice(0,annos.length,...(incoming.annotations||[]).map(cleanAnnotation));
+  const active=tracks.find(tr=>tr.id===activeTrackId);if(active)linkImportedAnnotations(active,annos);
   if(!activeTrackId)saveActiveTrackState();
   redrawActiveRoute(true);renderTrackList();renderPlanner();
 };
@@ -129,7 +133,7 @@ const baseMergePlacemarks=mergeImportedPlacemarksIntoAnnos;
 mergeImportedPlacemarksIntoAnnos=function() {
   baseMergePlacemarks();
   const tr=tracks.find(t=>t.id===activeTrackId);
-  annos.forEach(a=>{if(a.fromImport){const pm=tr?.placemarks.find(pm=>placemarkSuppressionKey(pm.lat,pm.lng)===placemarkSuppressionKey(...a.latlng));if(pm?.imageData)a.imageData=pm.imageData;}});
+  annos.forEach(a=>{if(a.fromImport){const pm=tr?.placemarks.find(pm=>a.importId?pm.importId===a.importId:placemarkSuppressionKey(pm.lat,pm.lng)===placemarkSuppressionKey(...a.latlng));if(pm?.imageData&&!a.imageData&&!a.imageUrl)a.imageData=pm.imageData;}});
   refreshAnnoMarkers();
 };
 let gapLayer=L.layerGroup().addTo(map);
@@ -237,7 +241,7 @@ renderAnnoList=function(){baseRenderAnnoList();[...$('annoList').children].forEa
 });};
 $('clearAnnoBtn').onclick=()=>{
   if(!annos.length||!confirm(say('清空当前路线的全部标注？可撤销。','Clear all annotations on this route? Undo is available.')))return;
-  const tr=tracks.find(t=>t.id===activeTrackId);if(tr)tr.suppressedPlacemarkKeys=(tr.placemarks||[]).map(pm=>placemarkSuppressionKey(pm.lat,pm.lng));
+  const tr=tracks.find(t=>t.id===activeTrackId);if(tr)tr.suppressedPlacemarkKeys=(tr.placemarks||[]).map(placemarkImportId);
   annos.length=0;refreshAnnoMarkers();renderAnnoList();renderPlanner();
 };
 const xmlText=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');

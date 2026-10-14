@@ -3,8 +3,11 @@
   "private": true,
   "version": "3.0.0",
   "scripts": {
-    "test": "node --test tests/route-core.test.cjs",
-    "test:browser": "node tests/browser.test.cjs"
+    "start": "python3 -m http.server 8765 --bind 127.0.0.1",
+    "build": "node scripts/build-site.cjs",
+    "test": "node --test tests/route-core.test.cjs tests/dem-core.test.cjs",
+    "test:browser": "node tests/browser.test.cjs && node tests/dem-browser.test.cjs",
+    "test:site": "node scripts/test-site.cjs"
   },
   "devDependencies": { "playwright": "1.62.1" }
 }

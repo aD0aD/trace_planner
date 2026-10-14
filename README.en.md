@@ -129,3 +129,33 @@ MIT (see `LICENSE`)
 - Routes are processed locally. Basemaps, URL imports, and external image references access their respective third-party services.
 
 For development: `npm ci`, `npm test`, `npx playwright install chromium`, then `npm run test:browser`. GitHub Actions tests before deploying only the application files.
+
+## 9. Local DEM terrain maps
+
+For local use on macOS, double-click `start-local.command` and leave the terminal open, then visit <http://127.0.0.1:8765/Trace_planner.html>. Alternatively run `npm start` in the project directory. Opening HTML directly with `file://` cannot run the DEM worker; the page displays launch instructions. Download an existing project as JSON to move it from the file page into the HTTP preview.
+
+The worker retains only the most recent projected elevation crop, with an 8 MiB height-cache limit (at most approximately 4.8 MB under the current output pixel budget). Contour-interval and hillshade changes reuse it without TIFF reads. Changing the crop, reopening sources, or removing DEMs invalidates the cache. It is session-only and excluded from projects and drafts.
+
+Imported KML/GPX waypoints retain independent source IDs through coordinate edits, deletion, route switching, project restoration and undo/redo. Legacy points are matched at their original coordinates and assigned IDs before editing.
+
+Expand **Local DEM terrain map** and select one or more elevation GeoTIFFs. The first release supports north-up, single-band WGS84 geographic rasters (EPSG:4326), with elevations in metres. For ASTER, select `_dem.tif`; `_num.tif` stores observation counts. Older ASTER rasters without a NoData tag use -9999 for voids.
+
+- The default crop is the active route plus a 2 km buffer. Alternatively use the current map view or select two opposite crop corners on the map.
+- Contours default to **20 m**. Available intervals are 10, 20, 50, 100 and 200 m, or off. Every fifth contour is emphasized; sufficiently long major contours have elevation labels.
+- Toggle hillshade, visibility and automatic crop updates. Cancel a running computation when changing area.
+- Export a terrain PNG with the active route, waypoints, interval, source names and scale bar. DEM rendering preserves original track elevations.
+
+Files are read locally in a worker, in cropped raster windows. The projected output is limited to approximately 1.2 million pixels; embedded overviews are used when available. Large stripped files without overviews can still require substantial I/O. Individual decoded blocks over 32 MB and crops spanning too many blocks are rejected with a suggestion to narrow the crop or create a tiled GeoTIFF with overviews. NoData and uncovered areas stay transparent; color limits follow the valid elevations of the current crop.
+
+Projects, drafts and undo snapshots store settings and source filenames/sizes, not TIFF contents. Reselect the required files after reopening a page or restoring a project that references different sources. Cached application assets allow offline use with newly selected local files. Use an HTTP server for local development, rather than opening the HTML file directly.
+
+`npm run test:browser` includes synthetic GeoTIFF fixtures. Optional real-file validation:
+
+```sh
+DEM_TEST_FILES='/path/west_dem.tif;/path/east_dem.tif' \
+DEM_TEST_KML='/path/route.kml' \
+DEM_TEST_OUTPUT='/path/output' \
+node tests/dem-browser.test.cjs
+```
+
+Real-file validation writes a 20 m terrain PNG, desktop/mobile screenshots, project JSON, and a crop report without copying source DEMs into the repository.

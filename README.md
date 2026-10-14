@@ -40,5 +40,6 @@ MIT (see `LICENSE`)
 - Editable verified waypoints, distance-based splits, itinerary timing and decision notes
 - Printable roadbooks and itinerary CSV
 - Automatic local drafts, undo/redo, and cached application access for offline revisits (basemaps require network)
+- Local WGS84 GeoTIFF terrain maps, cropped to the route or selected area, with configurable contours (20 m default), hillshade and PNG export
 
 See the [Chinese guide](README.zh.md#八领队规划更新v3) or [English guide](README.en.md#8-leader-planning-v3) for details and compatibility limits.
