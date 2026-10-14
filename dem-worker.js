@@ -1,6 +1,6 @@
 /* Only this worker owns TIFF handles and decoded raster windows. */
 importScripts('vendor/geotiff.js','dem-core.js');
-let sources=[],generation=0,controller=null;
+let sources=[],generation=0,controller=null,nextSourceId=0;
 const C=DemCore;
 const MAX_DECODE_BYTES=32*1024*1024;
 // One projected crop only. Neither TIFF blocks nor previous crops accumulate here.
@@ -29,6 +29,9 @@ function metadata(image,reference=null) {
 function checkBlock(meta) {
   if(meta.blockWidth*meta.blockHeight*meta.bytes>MAX_DECODE_BYTES)throw Error('TIFF 单个解压块超过 32 MB，请转为分块且带概览的 GeoTIFF / TIFF block exceeds 32 MB; convert to tiled GeoTIFF with overviews');
 }
+function reportSources(token,errors=[],changed=false) {
+  postMessage({type:'opened',token,replaced:changed,sources:sources.map(s=>({id:s.id,name:s.file.name,size:s.file.size,...s.meta,overviews:s.levels.length-1})),errors});
+}
 async function openFiles(files,token) {
   const incoming=[],errors=[];
   for(const file of files) {
@@ -44,12 +47,21 @@ async function openFiles(files,token) {
       if(!levels.some(l=>l.meta.blockWidth*l.meta.blockHeight*l.meta.bytes<=MAX_DECODE_BYTES))checkBlock(meta);
       // ASTER GDEM uses -9999 for voids even when older files omit GDAL_NODATA.
       const nodata=meta.nodata??(/^ASTGTM/i.test(file.name)?-9999:null);
-      incoming.push({file,tiff,meta,levels,nodata});
+      incoming.push({id:++nextSourceId,file,tiff,meta,levels,nodata});
     }catch(e){if(tiff)await tiff.close();errors.push(`${file.name}: ${e.message}`);}
     if(token!==generation){for(const s of incoming)await s.tiff.close();return;}
   }
-  if(incoming.length){invalidateCache();for(const s of sources)await s.tiff.close();sources=incoming;}
-  postMessage({type:'opened',token,replaced:incoming.length>0,sources:sources.map(s=>({name:s.file.name,size:s.file.size,...s.meta,overviews:s.levels.length-1})),errors});
+  if(incoming.length) {
+    const next=sources.slice(),discarded=[];
+    for(const item of incoming) {
+      // A reselected tile updates its handle; equally named files covering other tiles coexist.
+      const i=next.findIndex(s=>s.file.name===item.file.name&&s.meta.bounds.every((v,j)=>v===item.meta.bounds[j]));
+      if(i<0)next.push(item);else {discarded.push(next[i]);next[i]=item;}
+    }
+    invalidateCache();sources=next;
+    for(const s of discarded)await s.tiff.close();
+  }
+  if(token===generation)reportSources(token,errors,incoming.length>0);
 }
 async function readSource(source,g,heights,token,stats) {
   const overlap=C.intersect(g.bounds,source.meta.bounds);if(!overlap)return;
@@ -121,10 +133,16 @@ onmessage=event=>{
   generation=token;if(controller)controller.abort();controller=new AbortController();
   if(type==='cancel')return;
   queue=queue.catch(()=>{}).then(async()=>{
-    if(token!==generation)return;
+    // List removals remain ordered even if another selection is queued immediately afterwards.
+    if(token!==generation&&type!=='clear'&&type!=='remove')return;
     try {
       if(type==='open')await openFiles(data.files,token);
       else if(type==='render')await render(data.options,token);
+      else if(type==='remove') {
+        const i=sources.findIndex(s=>s.id===data.id);
+        if(i>=0){const [removed]=sources.splice(i,1);invalidateCache();await removed.tiff.close();}
+        if(token===generation)reportSources(token,[],i>=0);
+      }
       else if(type==='clear'){invalidateCache();for(const s of sources)await s.tiff.close();sources=[];postMessage({type:'cleared',token});}
     }catch(e){if(token===generation)postMessage({type:'error',token,message:e.message});}
   });

@@ -140,6 +140,7 @@ Imported KML/GPX waypoints retain independent source IDs through coordinate edit
 
 Expand **Local DEM terrain map** and select one or more elevation GeoTIFFs. The first release supports north-up, single-band WGS84 geographic rasters (EPSG:4326), with elevations in metres. For ASTER, select `_dem.tif`; `_num.tif` stores observation counts. Older ASTER rasters without a NoData tag use -9999 for voids.
 
+- Hold ⌘ (Mac) or Ctrl (Windows) to select multiple files in one folder, or add files from different folders in separate selections. Existing DEMs remain loaded. Remove individual files from the list or clear the entire set with Remove DEM. Reselecting a filename with the same coverage updates it; equally named files covering other areas coexist.
 - The default crop is the active route plus a 2 km buffer. Alternatively use the current map view or select two opposite crop corners on the map.
 - Contours default to **20 m**. Available intervals are 10, 20, 50, 100 and 200 m, or off. Every fifth contour is emphasized; sufficiently long major contours have elevation labels.
 - Toggle hillshade, visibility and automatic crop updates. Cancel a running computation when changing area.
