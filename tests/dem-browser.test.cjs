@@ -27,15 +27,36 @@ const server=http.createServer((req,res)=>{const name=decodeURIComponent(new URL
       // The void is inside the crop, rather than at the source edge.
       if(!side)for(let y=45;y<55;y++)for(let x=95;x<105;x++)values[y*width+x]=-9999;
       const buffer=GeoTIFF.writeArrayBuffer(values,{width,height,BitsPerSample:[32],SampleFormat:[3],ModelPixelScale:[.0001,.0001,0],ModelTiepoint:[0,0,0,west-.00005,28.38645,0],GeographicTypeGeoKey:4326,GTModelTypeGeoKey:2,GTRasterTypeGeoKey:1,GDAL_NODATA:'-9999\0'});
-      return {name:`terrain-${side}.tif`,bytes:Array.from(new Uint8Array(buffer))};
+      // Distinct folders can contain the same basename; coverage distinguishes the tiles.
+      return {name:'terrain.tif',bytes:Array.from(new Uint8Array(buffer))};
     }));
     files=generated.map(f=>({name:f.name,mimeType:'image/tiff',buffer:Buffer.from(f.bytes)}));
     await page.setInputFiles('#trackInput',{name:'seam.gpx',mimeType:'application/gpx+xml',buffer:Buffer.from('<gpx><trk><trkseg><trkpt lat="28.38" lon="120.997"><ele>400</ele></trkpt><trkpt lat="28.381" lon="121.004"><ele>500</ele></trkpt></trkseg></trk></gpx>')});
     await page.fill('#demBuffer','0.1');await page.locator('#demBuffer').press('Tab');
   }
   const originalElev=await page.evaluate(()=>ele.slice());
+  assert.equal(await page.locator('#demInput').evaluate(el=>el.multiple),true);
   await page.setInputFiles('#demInput',files);
   await page.waitForFunction(()=>!!Terrain.state.result,{},{timeout:90000});
+  assert.notEqual(await page.inputValue('#demInput'),'');
+  // Files often live in different folders. Separate picker selections must accumulate.
+  await page.click('#demClear');await page.waitForFunction(()=>Terrain.state.sources.length===0&&!Terrain.state.result);
+  assert.equal(await page.inputValue('#demInput'),'');
+  await page.setInputFiles('#demInput',[files[0]]);
+  await page.waitForFunction(()=>Terrain.state.sources.length===1&&Terrain.state.result?.stats.used.length===1);
+  assert.ok(await page.evaluate(()=>Terrain.state.result.known/(Terrain.state.result.grid.width*Terrain.state.result.grid.height))<1);
+  await page.setInputFiles('#demInput',[files[1]]);
+  await page.waitForFunction(()=>Terrain.state.sources.length===2&&Terrain.state.result?.stats.used.length===2);
+  let previousToken=await page.evaluate(()=>Terrain.state.result.token);
+  await page.setInputFiles('#demInput',[files[0]]);
+  await page.waitForFunction(t=>Terrain.state.result?.token>t,previousToken);
+  assert.equal(await page.evaluate(()=>Terrain.state.sources.length),2);
+  const firstName=typeof files[0]==='string'?path.basename(files[0]):files[0].name;
+  await page.getByRole('button',{name:`移除 ${firstName}`,exact:true}).first().click();
+  await page.waitForFunction(()=>Terrain.state.sources.length===1&&Terrain.state.result?.stats.used.length===1);
+  assert.equal(await page.inputValue('#demInput'),'');
+  await page.setInputFiles('#demInput',[files[0]]);
+  await page.waitForFunction(()=>Terrain.state.sources.length===2&&Terrain.state.result?.stats.used.length===2);
   const info=await page.evaluate(()=>{const {result:r,sources}=Terrain.state;return {files:sources.length,width:r.grid.width,height:r.grid.height,coverage:r.known/(r.grid.width*r.grid.height),interval:r.interval,lines:r.lines.length,min:r.min,max:r.max,stats:r.stats,metadata:sources.map(s=>({name:s.name,width:s.width,height:s.height,resolution:s.resolution,bounds:s.bounds}))};});
   assert.equal(info.files,2);assert.equal(info.interval,20);assert.ok(info.lines>0);assert.ok(info.width*info.height<1200000);assert.equal(info.stats.used.length,2);assert.ok(info.stats.used.every(s=>s.sampled>0));
   assert.ok(info.stats.peakWindowPixels<=262144+info.metadata[0].width);assert.deepEqual(await page.evaluate(()=>ele.slice()),originalElev);

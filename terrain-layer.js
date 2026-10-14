@@ -21,6 +21,7 @@
   function setBusy(value) {
     busy=value;$('demCancel').disabled=!value;$('demExport').disabled=value||!result;
     $('demRender').disabled=value||fileMode;$('demInput').disabled=value||fileMode;
+    $('demFiles').querySelectorAll('button').forEach(button=>button.disabled=value);
   }
   function ensureWorker() {
     if(worker)return worker;
@@ -32,11 +33,11 @@
       setBusy(false);
       if(data.type==='error'){signature='';status(data.message,data.message,true);return;}
       if(data.type==='opened') {
-        sources=data.sources;expected=sources.map(s=>({name:s.name,size:s.size}));signature='';
+        sources=data.sources;expected=sources.map(s=>({name:s.name,size:s.size,bounds:s.bounds.slice()}));signature='';
         // A new source selection invalidates any terrain rendered from the previous files.
         if(data.replaced)clearResult();renderFiles();
         const errors=data.errors.join('\n');
-        status(errors||text(`已读取 ${sources.length} 份 DEM 的范围，可生成地形图。`,`Loaded extents of ${sources.length} DEM files. Generate a terrain map.`),undefined,!!errors);
+        status(errors||text(sources.length?`已加载 ${sources.length} 份 DEM，可继续添加其他文件。`:'DEM 已移除',sources.length?`${sources.length} DEM files loaded; you can add more.`:'DEM removed'),undefined,!!errors);
         if(typeof observeChanges==='function')observeChanges();
         if(sources.length&&options.auto&&!errors)schedule(true);
       }else if(data.type==='rendered') {
@@ -51,7 +52,10 @@
   function renderFiles() {
     const list=$('demFiles');list.replaceChildren();coverage.clearLayers();
     for(const s of sources) {
-      const li=document.createElement('li');li.textContent=`${s.name} · ${(s.size/1048576).toFixed(1)} MB · ${s.width}×${s.height} · ${s.overviews} ${text('概览','overviews')}`;
+      const li=document.createElement('li'),label=document.createElement('span');label.textContent=`${s.name} · ${(s.size/1048576).toFixed(1)} MB · ${s.width}×${s.height} · ${s.overviews} ${text('概览','overviews')}`;
+      const remove=document.createElement('button');remove.type='button';remove.textContent=text('移除','Remove');remove.setAttribute('aria-label',text(`移除 ${s.name}`,`Remove ${s.name}`));remove.disabled=busy;
+      remove.onclick=()=>{clearTimeout(timer);$('demInput').value='';ensureWorker().postMessage({type:'remove',token:++token,id:s.id});setBusy(true);$('demCancel').disabled=true;status('正在移除 DEM…','Removing DEM…');};
+      li.append(label,remove);
       list.append(li);
       if(!result)L.rectangle([[s.bounds[1],s.bounds[0]],[s.bounds[3],s.bounds[2]]],{color:'#0f766e',weight:1,fill:false,interactive:false}).addTo(coverage);
     }
@@ -174,8 +178,9 @@
       for(const k of ['shade','visible','auto'])if(typeof saved[k]==='boolean')fresh[k]=saved[k];
       if(Array.isArray(saved.customBounds)&&saved.customBounds.length===4&&saved.customBounds.every(Number.isFinite))fresh.customBounds=saved.customBounds.slice();
     }
-    options=fresh;expected=Array.isArray(saved?.sources)?saved.sources.filter(s=>s&&typeof s.name==='string').map(s=>({name:s.name,size:s.size})):[];
-    if(sources.length&&(sources.length!==expected.length||sources.some(s=>!expected.some(e=>e.name===s.name&&e.size===s.size)))) {
+    options=fresh;expected=Array.isArray(saved?.sources)?saved.sources.filter(s=>s&&typeof s.name==='string').map(s=>({name:s.name,size:s.size,
+      bounds:Array.isArray(s.bounds)&&s.bounds.length===4&&s.bounds.every(Number.isFinite)?s.bounds.slice():null})):[];
+    if(sources.length&&(sources.length!==expected.length||sources.some(s=>!expected.some(e=>e.name===s.name&&e.size===s.size&&(!e.bounds||e.bounds.every((v,i)=>v===s.bounds[i])))))) {
       if(worker)worker.postMessage({type:'clear',token:++token});sources=[];
     }
     if($('demPanel')){syncControls();renderFiles();if(overlay){if(options.visible)overlay.addTo(map);else map.removeLayer(overlay);}schedule(true);}
@@ -196,10 +201,12 @@
   window.initTerrain=function() {
     const panel=document.createElement('details');panel.id='demPanel';panel.className='box tool-shared';
     panel.innerHTML=`<summary data-dem-zh="本地 DEM 地形图" data-dem-en="Local DEM terrain map"></summary>
-      <p class="hint" data-dem-zh="选择 WGS84 单波段高程 GeoTIFF，可同时选多份。ASTER 请选 _dem.tif；_num.tif 是观测次数。" data-dem-en="Select one or more WGS84 single-band elevation GeoTIFFs. For ASTER, use _dem.tif; _num.tif contains observation counts."></p>
+      <p class="hint" data-dem-zh="可多选，也可分次添加不同文件夹中的 DEM。相同文件名且覆盖范围相同的 DEM 会更新。ASTER 请选 _dem.tif；_num.tif 是观测次数。" data-dem-en="Select multiple DEMs or add files from different folders in separate selections. Reselecting the same filename and coverage updates it. For ASTER, use _dem.tif; _num.tif contains observation counts."></p>
       <div id="demLaunchNotice" class="dem-launch-notice" role="alert" hidden><p data-dem-zh="当前直接打开了 HTML 文件，DEM 功能需要从本地预览地址使用。双击项目中的 start-local.command 启动预览，再点击下方链接。" data-dem-en="DEM requires the local preview address. Double-click start-local.command in the project folder to start the preview, then open the link below."></p><a href="http://127.0.0.1:8765/Trace_planner.html" target="_blank" rel="noopener" data-dem-zh="打开本地预览" data-dem-en="Open local preview"></a></div>
       <div id="demStatus" class="hint" role="status" aria-live="polite"></div>
+      <label for="demInput" data-dem-zh="添加 DEM 文件（可多选）" data-dem-en="Add DEM files (multiple allowed)"></label>
       <input id="demInput" type="file" accept=".tif,.tiff" multiple aria-label="DEM GeoTIFF">
+      <p class="hint" data-dem-zh="同一文件夹内可按住 ⌘（Mac）或 Ctrl（Windows）点击多份文件；跨文件夹请分次添加。" data-dem-en="In one folder, hold ⌘ (Mac) or Ctrl (Windows) to select several files; add files from other folders separately."></p>
       <ul id="demFiles" class="dem-files"></ul>
       <div class="metadata-row"><label><span data-dem-zh="裁剪范围" data-dem-en="Crop area"></span><select id="demCropMode"><option value="route" data-dem-zh="当前路线周边" data-dem-en="Around active route"></option><option value="view" data-dem-zh="当前地图视野" data-dem-en="Current map view"></option><option value="custom" data-dem-zh="地图框选范围" data-dem-en="Selected map area"></option></select></label>
       <label><span data-dem-zh="周边扩展 (km)" data-dem-en="Route buffer (km)"></span><input id="demBuffer" type="number" min="0.1" max="20" step="0.1" value="2"></label></div>
@@ -212,12 +219,13 @@
     $('onlineSearchBox').after(panel);syncControls();translate();status('尚未导入 DEM','No DEM imported');
     if(fileMode){panel.open=true;$('demLaunchNotice').hidden=false;setBusy(false);$('demSelect').disabled=true;status('DEM 暂不可用，请先打开本地预览。','DEM unavailable; open the local preview first.',true);}
     $('demInput').onchange=e=>{
-      const files=[...e.target.files];e.target.value='';if(!files.length)return;
+      const files=[...e.target.files];if(!files.length)return;
       try{ensureWorker().postMessage({type:'open',token:++token,files});setBusy(true);status('正在读取 DEM 元数据…','Reading DEM metadata…');}catch(err){setBusy(false);status(err.message,err.message,true);}
     };
+    $('demInput').onclick=e=>{e.target.value='';};
     $('demRender').onclick=()=>render(true);$('demExport').onclick=exportMap;
     $('demCancel').onclick=()=>{clearTimeout(timer);if(worker)worker.postMessage({type:'cancel',token:++token});setBusy(false);signature='';status('已取消，可缩小范围后重试。','Cancelled; narrow the crop and retry.');};
-    $('demClear').onclick=()=>{clearTimeout(timer);stopSelection();if(selection){map.removeLayer(selection);selection=null;}if(worker)worker.postMessage({type:'clear',token:++token});sources=[];expected=[];signature='';clearResult();renderFiles();setBusy(false);status('DEM 已移除','DEM removed');observeChanges();};
+    $('demClear').onclick=()=>{clearTimeout(timer);$('demInput').value='';stopSelection();if(selection){map.removeLayer(selection);selection=null;}if(worker)worker.postMessage({type:'clear',token:++token});sources=[];expected=[];signature='';clearResult();renderFiles();setBusy(false);status('DEM 已移除','DEM removed');observeChanges();};
     for(const id of ['demCropMode','demBuffer','demInterval','demShade','demVisible','demAuto'])$(id).onchange=()=>{
       options=controls();options.bufferKm=Math.max(.1,Math.min(20,options.bufferKm||2));syncControls();
       if(overlay){if(options.visible)overlay.addTo(map);else map.removeLayer(overlay);}
