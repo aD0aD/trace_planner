@@ -118,7 +118,7 @@ MIT (see `LICENSE`)
 - Red dashed connections are unconfirmed gaps, excluded from recorded distance and climb. Exports preserve separate segments. A dashed connection does not establish a walkable trail.
 - Missing elevation remains unknown. Smoothing does not cross gaps or missing measurements; threshold accumulation retains gradual climbs. Sampling density and recording devices still affect results.
 - Coordinates are read as WGS84 without automatic conversion. Check alignment against known landmarks.
-- Edit waypoint coordinates, type, verification, notes, reference links, and compressed images. Points farther than 100 m from the nearest recorded sample remain unassociated with mileage.
+- Edit waypoint coordinates, type, verification, notes, reference links, and compressed images. Imported waypoint edits and deletions persist across route switching and project restoration; moving a point does not recreate it at its original location. Points farther than 100 m from the nearest recorded sample remain unassociated with mileage.
 - Pick breakpoints on the map or profile, or split at waypoints. Automatic splitting uses recorded distance. Changing a segment boundary creates a new leg with new timing defaults.
 - Itinerary estimates use distance / walking speed + ascent / climb rate, with rests added separately. Override moving time for terrain or group conditions. Missing elevation or route gaps require a manual time before later arrival times can be calculated.
 - Latest passage deadlines refer to the departure day. For multiday trips, create daily routes and record overnight decision times in notes.
@@ -128,35 +128,16 @@ MIT (see `LICENSE`)
 - After a successful online visit and application caching, offline revisits support route editing, draft recovery, and export. Basemaps and external images still require a network connection; map tiles are not predownloaded.
 - Routes are processed locally. Basemaps, URL imports, and external image references access their respective third-party services.
 
-For development: `npm ci`, `npm test`, `npx playwright install chromium`, then `npm run test:browser`. GitHub Actions tests before deploying only the application files.
+## 9. DEM terrain maps
 
-## 9. Local DEM terrain maps
+Open the [website](https://ad0ad.github.io/trace_planner/), expand **Local DEM terrain map**, and select `.tif / .tiff` files covering your route. Supported GeoTIFFs are north-up, single-band WGS84 geographic rasters (EPSG:4326), with elevations in metres. For ASTER GDEM, select `_dem.tif`; `_num.tif` contains observation counts, not elevations.
 
-For local use on macOS, double-click `start-local.command` and leave the terminal open, then visit <http://127.0.0.1:8765/Trace_planner.html>. Alternatively run `npm start` in the project directory. Opening HTML directly with `file://` cannot run the DEM worker; the page displays launch instructions. Download an existing project as JSON to move it from the file page into the HTTP preview.
+1. Import a GPX/KML route, then add DEM files. Hold ⌘ (Mac) or Ctrl (Windows) to select several files in one folder. Files from different folders can be added in separate selections; existing DEMs remain loaded.
+2. The default crop is the active route plus a 2 km buffer. Alternatively select the current map view or click **Select crop on map** and choose two opposite corners.
+3. Contours default to **20 m**. Choose 10, 20, 50, 100 or 200 m, or turn contours off. Every fifth contour is emphasized; sufficiently long major contours have elevation labels.
+4. Toggle hillshade, terrain visibility and automatic crop updates. Remove individual files from the list or clear the entire set with **Remove DEM**. Reselecting the same filename and coverage updates that file.
+5. Choose **Export terrain PNG** to save terrain, the active route, waypoints, contour interval and scale bar.
 
-The worker retains only the most recent projected elevation crop, with an 8 MiB height-cache limit (at most approximately 4.8 MB under the current output pixel budget). Contour-interval and hillshade changes reuse it without TIFF reads. Changing the crop, reopening sources, or removing DEMs invalidates the cache. It is session-only and excluded from projects and drafts.
+Uncovered areas and missing elevations stay blank. For large datasets, start with a smaller crop. Terrain detail is limited by the source DEM resolution, and original track elevations remain unchanged.
 
-Imported KML/GPX waypoints retain independent source IDs through coordinate edits, deletion, route switching, project restoration and undo/redo. Legacy points are matched at their original coordinates and assigned IDs before editing.
-
-Expand **Local DEM terrain map** and select one or more elevation GeoTIFFs. The first release supports north-up, single-band WGS84 geographic rasters (EPSG:4326), with elevations in metres. For ASTER, select `_dem.tif`; `_num.tif` stores observation counts. Older ASTER rasters without a NoData tag use -9999 for voids.
-
-- Hold ⌘ (Mac) or Ctrl (Windows) to select multiple files in one folder, or add files from different folders in separate selections. Existing DEMs remain loaded. Remove individual files from the list or clear the entire set with Remove DEM. Reselecting a filename with the same coverage updates it; equally named files covering other areas coexist.
-- The default crop is the active route plus a 2 km buffer. Alternatively use the current map view or select two opposite crop corners on the map.
-- Contours default to **20 m**. Available intervals are 10, 20, 50, 100 and 200 m, or off. Every fifth contour is emphasized; sufficiently long major contours have elevation labels.
-- Toggle hillshade, visibility and automatic crop updates. Cancel a running computation when changing area.
-- Export a terrain PNG with the active route, waypoints, interval, source names and scale bar. DEM rendering preserves original track elevations.
-
-Files are read locally in a worker, in cropped raster windows. The projected output is limited to approximately 1.2 million pixels; embedded overviews are used when available. Large stripped files without overviews can still require substantial I/O. Individual decoded blocks over 32 MB and crops spanning too many blocks are rejected with a suggestion to narrow the crop or create a tiled GeoTIFF with overviews. NoData and uncovered areas stay transparent; color limits follow the valid elevations of the current crop.
-
-Projects, drafts and undo snapshots store settings and source filenames/sizes, not TIFF contents. Reselect the required files after reopening a page or restoring a project that references different sources. Cached application assets allow offline use with newly selected local files. Use an HTTP server for local development, rather than opening the HTML file directly.
-
-`npm run test:browser` includes synthetic GeoTIFF fixtures. Optional real-file validation:
-
-```sh
-DEM_TEST_FILES='/path/west_dem.tif;/path/east_dem.tif' \
-DEM_TEST_KML='/path/route.kml' \
-DEM_TEST_OUTPUT='/path/output' \
-node tests/dem-browser.test.cjs
-```
-
-Real-file validation writes a 20 m terrain PNG, desktop/mobile screenshots, project JSON, and a crop report without copying source DEMs into the repository.
+DEM files are processed in your browser and are not uploaded. Project JSON saves drawing settings and source-file information, but does not include the DEM itself. Reselect the corresponding DEM files when reopening a project.

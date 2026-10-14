@@ -15,6 +15,7 @@ Trace Planner 是一个面向徒步/越野路线的在线轨迹拼接与分析�
 ## What You Can Do
 
 - Import `KML / KMZ / GPX` tracks
+- Import WGS84 GeoTIFF DEMs for cropped terrain maps, contours (20 m default), hillshade and PNG export
 - Search tracks by keyword on `2bulu / 六只脚` (opens site search page)
 - Clip and stitch segments from multiple tracks
 - Analyze distance, ascent, and descent by segment
@@ -26,7 +27,7 @@ Trace Planner 是一个面向徒步/越野路线的在线轨迹拼接与分析�
 
 ## Privacy
 
-All route/project files are processed locally in your browser.
+All route, project and DEM files are processed locally in your browser.
 The website does not upload or store your files.
 
 ## License
@@ -40,6 +41,7 @@ MIT (see `LICENSE`)
 - Editable verified waypoints, distance-based splits, itinerary timing and decision notes
 - Printable roadbooks and itinerary CSV
 - Automatic local drafts, undo/redo, and cached application access for offline revisits (basemaps require network)
-- Local WGS84 GeoTIFF terrain maps, cropped to the route or selected area, with configurable contours (20 m default), hillshade and PNG export
 
 See the [Chinese guide](README.zh.md#八领队规划更新v3) or [English guide](README.en.md#8-leader-planning-v3) for details and compatibility limits.
+
+Development and validation instructions: [CONTRIBUTING.md](CONTRIBUTING.md).
