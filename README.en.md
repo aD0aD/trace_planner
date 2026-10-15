@@ -16,6 +16,7 @@ No installation, no login, and no backend required for normal use.
 - Work with multiple tracks in one project
 - Keyword track lookup on 2bulu / Sixfoot (opens site search pages)
 - Switch map base layers (Satellite / Topographic / Street) with hillshade overlay
+- A segmented scale bar in the lower left updates metres/kilometres as you zoom and pan; no DEM is required
 
 ### Track Stitching
 - Clip segments from any imported track

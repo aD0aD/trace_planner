@@ -10,6 +10,31 @@ const server=http.createServer((req,res)=>{const name=decodeURIComponent(new URL
  page.setDefaultTimeout(10000);page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.type()==='prompt'?d.accept('Test stitched route'):d.accept());
  await page.route('**/*',r=>r.request().url().startsWith('http://127.0.0.1')?r.continue():r.abort());
  await page.goto(`http://127.0.0.1:${server.address().port}/Trace_planner.html`);await page.waitForSelector('#leaderPlanner');
+ // The visible ruler must match geodesic distance at the centre latitude, on any basemap.
+ const checkScale=async()=>{
+   assert.equal(await page.locator('.map-scale').count(),1);
+   assert.equal(await page.locator('.map-scale').isVisible(),true);
+   const measured=await page.evaluate(()=>{
+     const ruler=document.querySelector('.map-scale-bar').getBoundingClientRect(),box=document.querySelector('.map-scale').getBoundingClientRect(),bounds=document.querySelector('#map').getBoundingClientRect(),size=map.getSize();
+     const label=document.querySelector('.map-scale-labels span:last-child').textContent;
+     const metres=parseFloat(label)*(label.endsWith('km')?1000:1);
+     const actual=map.distance(map.containerPointToLatLng([size.x/2-ruler.width/2,size.y/2]),map.containerPointToLatLng([size.x/2+ruler.width/2,size.y/2]));
+     const labels=[...document.querySelectorAll('.map-scale-labels span')].filter(el=>getComputedStyle(el).visibility!=='hidden').map(el=>el.getBoundingClientRect());
+     return {label,metres,width:ruler.width,labelWidths:labels.map(r=>r.width),error:Math.abs(actual-metres)/metres,inside:box.left>=bounds.left&&box.right<=bounds.right&&box.top>=bounds.top&&box.bottom<=bounds.bottom,
+       readable:labels.every((r,i)=>!i||r.left>=labels[i-1].right+2)};
+   });
+   assert.ok(measured.error<.005,`Incorrect map scale: ${JSON.stringify(measured)}`);
+   assert.ok(measured.inside,'Scale must stay inside the map');
+   assert.ok(measured.readable,`Scale labels must not overlap: ${JSON.stringify(measured)}`);
+   return measured;
+ };
+ const initialScale=await checkScale();assert.match(initialScale.label,/km$/);
+ await page.evaluate(()=>map.setView([0,120],12,{animate:false}));const equatorScale=await checkScale();
+ await page.evaluate(()=>map.setView([60,120],12,{animate:false}));const northScale=await checkScale();
+ assert.ok(northScale.metres<equatorScale.metres,'Panning north must account for Mercator scale distortion');
+ await page.evaluate(()=>map.setZoom(19,{animate:false}));assert.match((await checkScale()).label,/\d m$/);
+ await page.evaluate(()=>map.setView([80,120],0,{animate:false}));await checkScale();
+ await page.evaluate(()=>map.setView([31.2,121.4],8,{animate:false}));
  const compatibility=await page.evaluate(async()=>{
    const prefixed=parseGpxText('<g:gpx xmlns:g="http://www.topografix.com/GPX/1/1"><g:rte><g:rtept lat="30" lon="120"/><g:rtept lat="30" lon="120.01"/><g:rtept/></g:rte></g:gpx>','route.gpx');
    const zip=new JSZip();zip.file('route.kml','<kml xmlns="http://www.opengis.net/kml/2.2"><Document><Placemark><LineString><coordinates>120,30,100 120.01,30,110</coordinates></LineString></Placemark></Document></kml>');
@@ -78,18 +103,24 @@ const server=http.createServer((req,res)=>{const name=decodeURIComponent(new URL
  assert.equal(await page.evaluate(()=>planRows().some(r=>r.arrival===null)),true);
  await page.emulateMedia({media:'print'});await page.screenshot({path:'/tmp/trace-planner-roadbook.png',fullPage:true});await page.emulateMedia({media:'screen'});
  await page.locator('#panel').evaluate(el=>el.scrollTop=0);
+ await page.waitForFunction(()=>map.getSize().x===document.querySelector('#map').clientWidth);await checkScale();
  await page.screenshot({path:'/tmp/trace-planner-desktop.png',fullPage:true});
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:'/tmp/trace-planner-mobile.png',fullPage:true});
+ await page.waitForFunction(()=>map.getSize().x===document.querySelector('#map').clientWidth);await checkScale();
+ await page.setViewportSize({width:320,height:740});await page.waitForFunction(()=>map.getSize().x===320);await checkScale();
+ await page.setViewportSize({width:390,height:844});await page.waitForFunction(()=>map.getSize().x===390);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  assert.ok(await page.locator('#map').evaluate(el=>el.getBoundingClientRect().height)>450);
  await page.click('#langToggle');assert.equal(await page.evaluate(()=>document.documentElement.lang),'en');
+ assert.match(await page.locator('.map-scale').getAttribute('aria-label'),/^Scale/);
  assert.equal(await page.locator('#printRoadbookBtn').textContent(),'Print roadbook / Save PDF');
  // Application caching supports an offline revisit; route data remains in the local draft.
  await page.evaluate(()=>navigator.serviceWorker.ready);await page.waitForFunction(()=>navigator.serviceWorker.controller);
  await page.context().setOffline(true);await page.reload();await page.waitForSelector('#leaderPlanner');
  await page.click('#restoreDraftBtn');assert.equal(await page.evaluate(()=>activeSource),'Leader main route');
+ await checkScale();
  await page.context().setOffline(false);
  assert.deepEqual(errors,[]);
- console.log('Browser integration passed: import, gaps, annotations, elevation, reversal, stitch, switching, breakpoints, project roundtrip, safe exports, validation, mobile, language.');
+ console.log('Browser integration passed: import, gaps, annotations, elevation, reversal, stitch, switching, breakpoints, project roundtrip, safe exports, validation, calibrated map scale, mobile, language, offline.');
  await browser.close();server.close();
 })().catch(e=>{console.error(e);server.close();process.exit(1);});

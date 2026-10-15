@@ -389,8 +389,54 @@ function createRouteSketch() {
   const north=document.createElementNS(ns,'text');north.setAttribute('x','20');north.setAttribute('y','25');north.textContent='N ↑';svg.append(north);return svg;
 }
 function roleLabel(role){return {main:say('主线','Main'),alternative:say('备选','Alternative'),escape:say('下撤','Escape')}[role]||role;}
+// Measure at the view's centre latitude, as a Mercator map's scale varies with latitude.
+const MapScaleControl=L.Control.extend({
+  options:{position:'bottomleft'},
+  onAdd(map) {
+    this._box=L.DomUtil.create('div','map-scale');
+    this._box.setAttribute('role','img');
+    this._bar=L.DomUtil.create('div','map-scale-bar',this._box);
+    for(let i=0;i<6;i++)L.DomUtil.create('i','',this._bar);
+    const labels=L.DomUtil.create('div','map-scale-labels',this._box);
+    this._labels=Array.from({length:4},(_,i)=>{const label=L.DomUtil.create('span','',labels);label.style.left=`${i*100/3}%`;return label;});
+    map.on('move resize',this.update,this);
+    map.whenReady(this.update,this);
+    return this._box;
+  },
+  onRemove(map){map.off('move resize',this.update,this);},
+  update() {
+    const map=this._map,size=map.getSize(),world=map.getPixelWorldBounds();
+    // Keep the ruler within the viewport and below half a world to avoid wrap ambiguity.
+    const maxWidth=Math.min(260,size.x*.65,size.x-56,world?world.getSize().x*.45:260);
+    if(maxWidth<=0){this._box.hidden=true;return;}
+    this._box.hidden=false;
+    const distance=width=>map.distance(map.containerPointToLatLng([size.x/2-width/2,size.y/2]),map.containerPointToLatLng([size.x/2+width/2,size.y/2]));
+    const target=distance(maxWidth)/3;
+    if(!Number.isFinite(target)||target<=0){this._box.hidden=true;return;}
+    const power=10**Math.floor(Math.log10(target));
+    const step=([5,3,2,1].find(n=>n*power<=target)||1)*power,total=step*3;
+    // Invert the distance measurement, including wide views where metres/pixel is nonlinear.
+    let low=0,high=maxWidth;
+    for(let i=0;i<20;i++){const mid=(low+high)/2;if(distance(mid)<total)low=mid;else high=mid;}
+    const width=(low+high)/2;
+    this._bar.style.width=`${width}px`;
+    this._box.classList.toggle('map-scale-compact',width<160);
+    const unit=total>=1000?'km':'m',divisor=unit==='km'?1000:1;
+    const decimals=Math.max(0,-Math.floor(Math.log10(step/divisor)));
+    this._labels.forEach((label,i)=>{label.textContent=i===0?'0':`${(i*step/divisor).toFixed(decimals)} ${unit}`;});
+    const description=say('比例尺（按地图中心纬度计算）','Scale (at the map centre latitude)');
+    this._box.title=description;
+    this._box.setAttribute('aria-label',`${description}: ${this._labels.at(-1).textContent}`);
+  }
+});
+let mapScaleControl=null;
 function initPlanner() {
   const css=document.createElement('link');css.rel='stylesheet';css.href='planner.css';document.head.append(css);
+  mapScaleControl=new MapScaleControl().addTo(map);
+  // Printing temporarily hides the map; refresh its geometry when the layout returns.
+  const mapSizeObserver=new ResizeObserver(()=>map.invalidateSize());
+  mapSizeObserver.observe(map.getContainer());
+  map.once('unload',()=>mapSizeObserver.disconnect());
   const status=document.createElement('div');status.innerHTML=`<div class="btns"><button id="undoBtn">${say('撤销','Undo')}</button><button id="redoBtn">${say('重做','Redo')}</button><button id="restoreDraftBtn">${say('恢复草稿','Restore draft')}</button></div><div class="hint" id="saveStatus">${say('草稿将在编辑后自动保存','Drafts save automatically after edits')}</div>`;
   $('projectDropZone').after(status);
   const gaps=document.createElement('div');gaps.id='gapList';gaps.className='btns';$('gapWarning').after(gaps);
@@ -482,6 +528,7 @@ applyLanguage=function() {
   const hint=document.querySelector('#liveProfileCanvas').parentElement.nextElementSibling;if(hint)hint.textContent=say('点击高度图可添加分段断点；起终点随地图与滑块同步。','Click the profile to add a breakpoint. Endpoints follow map and sliders.');
   const head=$('bpSegTbody').closest('table').querySelector('thead th:nth-child(2)');if(head)head.textContent=say('里程范围','Distance range');
   renderPlanner();renderTrackList();
+  if(mapScaleControl)mapScaleControl.update();
 };
 $('pickBtn').onclick=()=>{
   if(route.length<2)return;

@@ -16,6 +16,7 @@ Trace Planner 是一个面向徒步/越野路线的在线轨迹拼接与分析�
 
 - Import `KML / KMZ / GPX` tracks
 - Import WGS84 GeoTIFF DEMs for cropped terrain maps, contours (20 m default), hillshade and PNG export
+- Read the live map scale in metres or kilometres as you zoom and pan
 - Search tracks by keyword on `2bulu / 六只脚` (opens site search page)
 - Clip and stitch segments from multiple tracks
 - Analyze distance, ascent, and descent by segment
