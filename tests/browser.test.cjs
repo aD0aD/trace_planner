@@ -68,6 +68,29 @@ const server=http.createServer((req,res)=>{const name=decodeURIComponent(new URL
  assert.equal(await page.evaluate(()=>annos[0].notes),'Water verified on reconnaissance');
  // Import identity must survive edits, route switching, persistence, deletion and undo.
  const annotationProject=await page.evaluate(()=>serializeProject());
+ // Map clicks reveal the matching row inside both the list and the sidebar.
+ await page.evaluate(()=>{
+   annos.splice(0,annos.length,...Array.from({length:20},(_,i)=>({idx:0,text:`Waypoint ${i+1}`,type:'note',color:'#111827',latlng:[30+i*.001,120]})));
+   refreshAnnoMarkers();renderAnnoList();
+ });
+ const clickWaypoint=async(index,label=false)=>{
+   const name=await page.evaluate(({index,label})=>{map.closePopup();map.setView(annos[index].latlng,16,{animate:false});annos[index][label?'labelMarker':'marker'].getElement().setAttribute('data-test-waypoint','target');return annos[index].text;},{index,label});
+   await page.locator('[data-test-waypoint="target"]').click({force:true});
+   await page.evaluate(()=>document.querySelector('[data-test-waypoint="target"]').removeAttribute('data-test-waypoint'));
+   await page.waitForFunction(index=>{
+     const li=$('annoList').children[index],r=li.getBoundingClientRect(),list=$('annoList').getBoundingClientRect(),panel=$('panel').getBoundingClientRect();
+     return li.classList.contains('anno-selected')&&r.top>=Math.max(list.top,panel.top)&&r.bottom<=Math.min(list.bottom,panel.bottom);
+   },index);
+   assert.equal(await page.locator('#annoList .anno-selected').count(),1);
+   assert.ok((await page.locator('#annoList .anno-selected .t').textContent()).startsWith(name+' ·'));
+ };
+ await page.click('#tabStitch');await clickWaypoint(5);
+ assert.equal(await page.evaluate(()=>window.currentToolMode),'analysis');
+ await clickWaypoint(19,true);await clickWaypoint(0);
+ // Rebuilt markers must still resolve the right row after an earlier point is deleted.
+ await page.evaluate(()=>{annos.splice(1,1);refreshAnnoMarkers();renderAnnoList();});
+ await clickWaypoint(5,true);
+ await page.evaluate(p=>restoreProject(p),annotationProject);
  const kml='<kml xmlns="http://www.opengis.net/kml/2.2"><Document><Placemark><LineString><coordinates>120,30,100 120.01,30,120</coordinates></LineString></Placemark><Placemark><name>Imported water</name><Point><coordinates>120,30</coordinates></Point></Placemark><Placemark><name>Camp at water</name><Point><coordinates>120,30</coordinates></Point></Placemark></Document></kml>';
  const importedId=await page.evaluate(text=>{const tr=pushImportedTrack(parseKmlText(text,'waypoints.kml'));applyTrackAsActive(tr);redrawActiveRoute();renderTrackList();observeChanges();return tr.id;},kml);
  assert.equal(await page.evaluate(()=>annos.length),2);
@@ -97,7 +120,7 @@ const server=http.createServer((req,res)=>{const name=decodeURIComponent(new URL
  await page.fill('#routeNameInput','Leader main route');await page.locator('#routeNameInput').press('Tab');await page.waitForTimeout(100);
  await page.click('#undoBtn');assert.equal(await page.evaluate(()=>activeSource),originalName);
  await page.click('#redoBtn');assert.equal(await page.evaluate(()=>activeSource),'Leader main route');
- await page.waitForFunction(()=>localStorage.getItem('trace_planner_draft_v3'));
+ await page.waitForFunction(()=>JSON.parse(localStorage.getItem('trace_planner_draft_v3')||'null')?.activeSource==='Leader main route');
  await page.evaluate(()=>{window.print=()=>{};printRoadbook();});
  assert.ok((await page.textContent('#roadbook')).includes('Water verified on reconnaissance'));
  assert.equal(await page.evaluate(()=>planRows().some(r=>r.arrival===null)),true);

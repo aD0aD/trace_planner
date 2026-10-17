@@ -224,12 +224,22 @@ function openAnnotationEditor(annotation,index) {
   dialog.showModal();
 }
 function annotationDistance(a) {return Number.isInteger(a.idx)?`${(prefDist[a.idx]/1000).toFixed(2)} km`:say('离线点 / 未关联','Off-route / unassociated');}
+function revealAnnotation(annotation) {
+  const index=annos.indexOf(annotation);
+  if(index<0)return;
+  setToolTab('analysis');
+  const items=[...$('annoList').children];
+  items.forEach((li,i)=>li.classList.toggle('anno-selected',i===index));
+  items[index]?.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'center',inline:'nearest'});
+}
 const baseRefreshAnnoMarkers=refreshAnnoMarkers;
 refreshAnnoMarkers=function() {
   // URLs and text from imported documents must never become executable markup.
   annos.forEach(a=>Object.assign(a,cleanAnnotation(a)));
   baseRefreshAnnoMarkers();
   annos.forEach(a=>{
+    a.marker?.on('click',()=>revealAnnotation(a));
+    a.labelMarker?.on('click',()=>revealAnnotation(a));
     a.marker?.bindPopup(`<b>${escapeHtmlAttr(a.text)}</b><br>${annotationDistance(a)} · ${a.verified==='verified'?say('已核实','Verified'):say('待核实','Unverified')}<br>${escapeHtmlAttr(a.notes||'').replace(/\n/g,'<br>')}${a.imageData||a.imageUrl?`<br><img src="${escapeHtmlAttr(a.imageData||a.imageUrl)}" style="max-width:220px;max-height:180px" alt="" referrerpolicy="no-referrer">`:''}${a.linkUrl?`<br><a target="_blank" rel="noopener noreferrer" href="${escapeHtmlAttr(a.linkUrl)}">${say('参考链接','Reference')}</a>`:''}`);
   });
 };
