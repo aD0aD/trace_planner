@@ -70,3 +70,18 @@ GeoTIFFs with overviews for large datasets.
 
 These caches are session-only and excluded from project snapshots. Original
 track elevations remain independent from DEM rendering.
+
+## Photo-heavy projects
+
+Project downloads use version 4 with a lossless image asset table. The loader
+expands it before normal validation and still accepts older project files.
+Older application versions reject version 4 rather than silently dropping photos.
+Undo snapshots contain image references, share immutable image strings, and retain
+at most 20 changes within a conservative 128 MiB history budget. The live project
+is never dropped to meet that budget. Oversized local drafts are rejected before
+serializing image payloads; download the project to save photo-heavy work.
+
+Run `node tests/memory-browser.test.cjs` for editing/deletion/undo/redo and saved
+project roundtrips. Set `TRACE_MEMORY_PROJECT` to a private project path for a real
+file stress test; optional `TRACE_MEMORY_OUTPUT` writes the tested download.
+Private fixtures must stay outside the repository.
