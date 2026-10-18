@@ -109,7 +109,10 @@ const server=http.createServer((req,res)=>{const name=decodeURIComponent(new URL
  const reexported=await page.evaluate(()=>{const a=parseKmlText(routeToKml(route,annos,'edited'),'edited.kml');const b=parseGpxText(routeToGpx(route,annos,'edited'),'edited.gpx');return [a,b].map(p=>p.annotations.map(a=>({id:a.importId,position:a.latlng})));});
  for(const a of reexported)assert.deepEqual(a.find(a=>a.id===waypointId).position,[30.0002,120.0003]);
  // Delete a moved imported point by its source identity, while retaining the colocated camp.
- await page.evaluate(()=>observeChanges());await page.locator('#annoList li').first().getByRole('button',{name:'删除',exact:true}).click();
+ await page.evaluate(()=>{observeChanges();map.setView(annos[0].latlng,16);annos[0].marker.openPopup();});
+ await page.getByRole('button',{name:'删除路点',exact:true}).click();
+ await page.locator('.leaflet-popup').waitFor({state:'detached'});
+ assert.equal(await page.locator('#annoList li').count(),1);
  await page.evaluate(()=>{redrawActiveRoute();observeChanges();});assert.equal(await page.evaluate(()=>annos.length),1);
  assert.equal(await page.evaluate(()=>annos[0].text),'Camp at water');
  const removedProject=await page.evaluate(()=>serializeProject());await page.evaluate(p=>restoreProject(p),removedProject);await page.evaluate(()=>redrawActiveRoute());assert.equal(await page.evaluate(()=>annos.length),1);

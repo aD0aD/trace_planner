@@ -1,4 +1,5 @@
 /* Leader planning UI and project lifecycle. No track data is sent to a server. */
+const projectMemory=new ProjectMemory();
 const translationPairs=new Map();
 function say(zh,en){translationPairs.set(zh,en);return currentLang==='en'?en:zh;}
 const safeStorage={get(k){try{return localStorage.getItem(k);}catch{return null;}},set(k,v){localStorage.setItem(k,v);}};
@@ -39,8 +40,8 @@ serializeProject=function() {
 const baseRestoreProject=restoreProject;
 restoreProject=function(p) {
   // Validate the entire document before clearing any existing state.
-  RouteCore.validateProject(p);
-  const incoming=structuredClone(p);
+  const incoming=projectMemory.expand(p);
+  RouteCore.validateProject(incoming);
   routeBreaks=[...(incoming.breaks||[])];segmentPlans=structuredClone(incoming.segmentPlans||[]);
   routeRevision=incoming.revision||1;routeRole=incoming.role||'main';departureTime=/^\d{2}:\d{2}$/.test(incoming.departureTime||'')?incoming.departureTime:'08:00';
   baseRestoreProject(incoming);
@@ -240,7 +241,14 @@ refreshAnnoMarkers=function() {
   annos.forEach(a=>{
     a.marker?.on('click',()=>revealAnnotation(a));
     a.labelMarker?.on('click',()=>revealAnnotation(a));
-    a.marker?.bindPopup(`<b>${escapeHtmlAttr(a.text)}</b><br>${annotationDistance(a)} · ${a.verified==='verified'?say('已核实','Verified'):say('待核实','Unverified')}<br>${escapeHtmlAttr(a.notes||'').replace(/\n/g,'<br>')}${a.imageData||a.imageUrl?`<br><img src="${escapeHtmlAttr(a.imageData||a.imageUrl)}" style="max-width:220px;max-height:180px" alt="" referrerpolicy="no-referrer">`:''}${a.linkUrl?`<br><a target="_blank" rel="noopener noreferrer" href="${escapeHtmlAttr(a.linkUrl)}">${say('参考链接','Reference')}</a>`:''}`);
+    const content=document.createElement('div');content.innerHTML=`<b>${escapeHtmlAttr(a.text)}</b><br>${annotationDistance(a)} · ${a.verified==='verified'?say('已核实','Verified'):say('待核实','Unverified')}<br>${escapeHtmlAttr(a.notes||'').replace(/\n/g,'<br>')}${a.imageData||a.imageUrl?`<br><img src="${escapeHtmlAttr(a.imageData||a.imageUrl)}" style="max-width:220px;max-height:180px" alt="" referrerpolicy="no-referrer">`:''}${a.linkUrl?`<br><a target="_blank" rel="noopener noreferrer" href="${escapeHtmlAttr(a.linkUrl)}">${say('参考链接','Reference')}</a>`:''}`;
+    const actions=document.createElement('div');actions.className='annotation-popup-actions';
+    const del=document.createElement('button');del.type='button';del.className='annotation-popup-delete';
+    del.textContent=say('删除路点','Delete waypoint');
+    del.title=say('删除当前路点，可撤销','Delete this waypoint; undo is available');
+    del.onclick=e=>{L.DomEvent.stop(e);deleteAnnotation(a);};
+    actions.append(del);content.append(actions);
+    a.marker?.bindPopup(content);
   });
 };
 const baseRenderAnnoList=renderAnnoList;
@@ -343,18 +351,30 @@ renderBreakpointAnalysis=function() {
   renderPlanner();
 };
 let dirty=false,draftTimer=null,history=[],redoHistory=[],lastSnapshot=null,restoringHistory=false;
-function snapshot() {const p=serializeProject();delete p.savedAt;return JSON.stringify(p);}
+function snapshot() {const p=serializeProject();delete p.savedAt;return projectMemory.capture(p);}
 function observeChanges() {
   if(restoringHistory)return;
   const current=snapshot();if(current===lastSnapshot)return;
   if(lastSnapshot){history.push(lastSnapshot);if(history.length>20)history.shift();redoHistory=[];}
-  lastSnapshot=current;markDirty();
+  lastSnapshot=current;trimHistory();markDirty();
+}
+function trimHistory() {
+  const snapshots=()=>[lastSnapshot,...history,...redoHistory].filter(Boolean);
+  while(history.length+redoHistory.length>0&&projectMemory.retainedBytes(snapshots())>128*1024*1024){
+    if(history.length)history.shift();else redoHistory.shift();
+  }
+  projectMemory.prune(snapshots());
+}
+function localProjectText() {
+  const snap=projectMemory.capture(serializeProject());
+  if(projectMemory.storageUpperBound(snap)>LS_PROJECT_MAX_BYTES)throw Error('quota');
+  return JSON.stringify(projectMemory.portable(snap));
 }
 function markDirty() {
   dirty=true;
   if($('saveStatus'))$('saveStatus').textContent=say('已修改 · 正在保存草稿…','Changed · Saving draft…');
   clearTimeout(draftTimer);draftTimer=setTimeout(()=>{
-    try{const raw=JSON.stringify(serializeProject());if(new Blob([raw]).size>LS_PROJECT_MAX_BYTES)throw Error('quota');safeStorage.set('trace_planner_draft_v3',raw);
+    try{const raw=localProjectText();safeStorage.set('trace_planner_draft_v3',raw);
       $('saveStatus').textContent=say('草稿已保存在本浏览器 · 分享前请下载工程','Draft saved in this browser · Download project before sharing');
     }catch{$('saveStatus').textContent=say('草稿未保存（空间不足或浏览器限制），请下载工程','Draft not saved (storage full or restricted); download the project');}
   },500);
@@ -362,13 +382,13 @@ function markDirty() {
 function historyMove(undo) {
   observeChanges();const from=undo?history:redoHistory,to=undo?redoHistory:history;if(!from.length)return;
   const current=snapshot(),next=from.pop();restoringHistory=true;
-  try{restoreProject(JSON.parse(next));to.push(current);lastSnapshot=snapshot();markDirty();}finally{restoringHistory=false;}
+  try{restoreProject(JSON.parse(next));to.push(current);lastSnapshot=snapshot();trimHistory();markDirty();}finally{restoringHistory=false;}
 }
 function confirmReplace() {return !dirty||confirm(say('当前工程已修改。打开会替换当前内容，是否继续？建议先下载工程。','The project has changes. Opening replaces it. Continue? Download a backup first.'));}
 const baseLoadJson=loadProjectFromJsonText;
 loadProjectFromJsonText=function(txt,silent) {
-  const p=JSON.parse(txt);RouteCore.validateProject(p);if(!silent&&!confirmReplace())return;
-  restoreProject(p);dirty=false;observeChanges();dirty=false;if(!silent)alert(t('openedProject'));
+  const p=projectMemory.expand(JSON.parse(txt));RouteCore.validateProject(p);if(!silent&&!confirmReplace())return;
+  restoreProject(p);history=[];redoHistory=[];lastSnapshot=snapshot();trimHistory();dirty=false;if(!silent)alert(t('openedProject'));
 };
 function printRoadbook() {
   if(route.length<2){alert(t('noRouteAnalyze'));return;}
@@ -495,7 +515,8 @@ function initPlanner() {
   document.addEventListener('click',()=>setTimeout(observeChanges,0));document.addEventListener('change',()=>setTimeout(observeChanges,0));
   document.addEventListener('input',()=>{clearTimeout(window.changeObserveTimer);window.changeObserveTimer=setTimeout(observeChanges,350);});
   window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});
-  const baseSave=$('saveProjectBtn').onclick;$('saveProjectBtn').onclick=()=>{baseSave();dirty=false;$('saveStatus').textContent=say('工程已下载','Project downloaded');};
+  $('saveLocalBtn').onclick=()=>{try{safeStorage.set(LS_PROJECT_KEY,localProjectText());alert(t('saveLocalDone'));}catch{alert(t('localTooLarge'));}};
+  $('saveProjectBtn').onclick=()=>{const snap=projectMemory.capture(serializeProject());downloadText(`${safeName(activeSource||'route_project')}.project.json`,JSON.stringify(projectMemory.portable(snap)),'application/json;charset=utf-8');dirty=false;$('saveStatus').textContent=say('工程已下载','Project downloaded');};
   const exportButtons=['exportGpxBtn','exportKmlBtn','exportGeoBtn'];exportButtons.forEach(id=>{const handler=$(id).onclick;$(id).onclick=()=>{if(routeBreaks.length&&!confirm(say('路线包含未确认缺口，导出将保留断段。请在导航软件中检查断段显示。继续？','Route has unconfirmed gaps. Export preserves separate segments. Check your navigation app. Continue?')))return;handler();};});
   $('trackInput').addEventListener('change',()=>{setTimeout(observeChanges,800);});
   // Clicking a track on the map makes selection direct; imported paths remain independently visible.

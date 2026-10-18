@@ -2900,6 +2900,25 @@ $('addAnnoBtn').onclick = () => {
   $('addAnnoBtn').textContent = annoMode ? t('clickMapToAdd') : t('addAnno');
 };
 
+function deleteAnnotation(a) {
+  const i = annos.indexOf(a);
+  if (i < 0) return;
+  if (typeof observeChanges === 'function') observeChanges();
+  if (a.fromImport && activeTrackId) {
+    const tr = tracks.find(x => x.id === activeTrackId);
+    if (tr && Array.isArray(a.latlng) && a.latlng.length >= 2) {
+      if (!tr.suppressedPlacemarkKeys) tr.suppressedPlacemarkKeys = [];
+      tr.suppressedPlacemarkKeys.push(a.importId || placemarkSuppressionKey(a.latlng[0], a.latlng[1]));
+    }
+  }
+  a.marker?.closePopup();
+  annos.splice(i, 1);
+  refreshAnnoMarkers();
+  renderAnnoList();
+  if (typeof renderPlanner === 'function') renderPlanner();
+  if (typeof observeChanges === 'function') observeChanges();
+}
+
 function renderAnnoList() {
   const ul = $('annoList'); ul.innerHTML='';
   annos.forEach((a, i) => {
@@ -2909,16 +2928,7 @@ function renderAnnoList() {
     li.innerHTML = `<span class='t'>#${i+1} [${a.idx}] <span style="color:${a.color || '#111827'}">●</span> ${escapeHtmlAttr(a.text)}${picTag}${impTag}</span>`;
     const fly=document.createElement('button'); fly.textContent=t('fly'); fly.onclick=()=>{ map.setView(a.latlng,16); if (a.marker) a.marker.openPopup(); };
     const edit=document.createElement('button'); edit.textContent=t('edit'); edit.onclick=async ()=>{ await editAnno(i); };
-    const del=document.createElement('button'); del.textContent=t('del'); del.onclick=()=>{
-      if (a.fromImport && activeTrackId) {
-        const tr = tracks.find((x) => x.id === activeTrackId);
-        if (tr && Array.isArray(a.latlng) && a.latlng.length >= 2) {
-          if (!tr.suppressedPlacemarkKeys) tr.suppressedPlacemarkKeys = [];
-          tr.suppressedPlacemarkKeys.push(a.importId||placemarkSuppressionKey(a.latlng[0], a.latlng[1]));
-        }
-      }
-      annos.splice(i,1); refreshAnnoMarkers(); renderAnnoList();
-    };
+    const del=document.createElement('button'); del.textContent=t('del'); del.onclick=()=>deleteAnnotation(a);
     li.append(fly,edit,del); ul.appendChild(li);
   });
 }
@@ -3405,6 +3415,7 @@ function recomputeByElevationOptions() {
 })();
 
 </script>
+<script src="project-memory.js"></script>
 <script src="planner.js"></script>
 <script src="dem-core.js"></script>
 <script src="terrain-layer.js"></script>
