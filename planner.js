@@ -241,7 +241,14 @@ refreshAnnoMarkers=function() {
   annos.forEach(a=>{
     a.marker?.on('click',()=>revealAnnotation(a));
     a.labelMarker?.on('click',()=>revealAnnotation(a));
-    a.marker?.bindPopup(`<b>${escapeHtmlAttr(a.text)}</b><br>${annotationDistance(a)} · ${a.verified==='verified'?say('已核实','Verified'):say('待核实','Unverified')}<br>${escapeHtmlAttr(a.notes||'').replace(/\n/g,'<br>')}${a.imageData||a.imageUrl?`<br><img src="${escapeHtmlAttr(a.imageData||a.imageUrl)}" style="max-width:220px;max-height:180px" alt="" referrerpolicy="no-referrer">`:''}${a.linkUrl?`<br><a target="_blank" rel="noopener noreferrer" href="${escapeHtmlAttr(a.linkUrl)}">${say('参考链接','Reference')}</a>`:''}`);
+    const content=document.createElement('div');content.innerHTML=`<b>${escapeHtmlAttr(a.text)}</b><br>${annotationDistance(a)} · ${a.verified==='verified'?say('已核实','Verified'):say('待核实','Unverified')}<br>${escapeHtmlAttr(a.notes||'').replace(/\n/g,'<br>')}${a.imageData||a.imageUrl?`<br><img src="${escapeHtmlAttr(a.imageData||a.imageUrl)}" style="max-width:220px;max-height:180px" alt="" referrerpolicy="no-referrer">`:''}${a.linkUrl?`<br><a target="_blank" rel="noopener noreferrer" href="${escapeHtmlAttr(a.linkUrl)}">${say('参考链接','Reference')}</a>`:''}`;
+    const actions=document.createElement('div');actions.className='annotation-popup-actions';
+    const del=document.createElement('button');del.type='button';del.className='annotation-popup-delete';
+    del.textContent=say('删除路点','Delete waypoint');
+    del.title=say('删除当前路点，可撤销','Delete this waypoint; undo is available');
+    del.onclick=e=>{L.DomEvent.stop(e);deleteAnnotation(a);};
+    actions.append(del);content.append(actions);
+    a.marker?.bindPopup(content);
   });
 };
 const baseRenderAnnoList=renderAnnoList;
