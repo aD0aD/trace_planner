@@ -18,3 +18,30 @@ textarea,input[type=time] {width:100%;padding:8px;border:1px solid var(--line);b
 .leaflet-popup-content .annotation-popup-delete {background:#fff1f2;color:#b91c1c;border:1px solid #fca5a5;border-radius:8px;padding:8px 14px;min-height:40px;font:600 14px/1.4 sans-serif;cursor:pointer}
 .leaflet-popup-content .annotation-popup-delete:hover {background:#fee2e2;border-color:#ef4444}
 .leaflet-popup-content .annotation-popup-delete:focus-visible {outline:2px solid #b91c1c;outline-offset:2px}
+
+/* Each control belongs to one module. Shared modules remain the same DOM nodes across tabs. */
+[hidden] {display:none!important}
+.tabs {position:sticky;top:0;z-index:10;background:var(--surface);border:1px solid var(--brand-border);gap:6px;padding:5px}
+.tab-btn.active {background:var(--brand);color:#082f29;font-weight:700;box-shadow:none}
+.workspace-header {border-left:4px solid var(--brand);padding:2px 0 2px 12px;margin:18px 0 14px}
+.workspace-header h2 {font-size:17px;margin:0 0 5px}.workspace-header p{font-size:12px;color:var(--muted);margin:0;line-height:1.6}
+.module-actions {display:flex;gap:8px;margin-top:10px}.module-actions button{font-size:11px;padding:5px 10px;min-height:30px}
+.panel-module {padding:0;overflow:clip}
+.panel-module > summary {list-style:none;display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;padding:14px 16px;color:var(--ink);font-weight:650;font-size:14px;min-height:48px}
+.panel-module > summary::-webkit-details-marker{display:none}
+.panel-module > summary::before{content:'›';font-size:22px;line-height:1;width:10px;flex-shrink:0;color:var(--muted);transform-origin:center;transition:transform .15s}
+.panel-module[open] > summary::before{transform:rotate(90deg)}
+.panel-module[open] > summary{border-bottom:1px solid var(--line);background:var(--brand-soft)}
+.panel-module > summary:hover{background:var(--brand-soft)}
+.panel-module > summary:focus-visible{outline:2px solid var(--brand);outline-offset:-3px;border-radius:var(--radius-lg)}
+.panel-title {flex:1;min-width:0}.panel-count{font-size:12px;background:var(--brand-soft);border:1px solid var(--brand-border);padding:1px 8px;border-radius:999px;font-variant-numeric:tabular-nums}
+.panel-body {padding:14px 16px 16px}.panel-body > :first-child{margin-top:0}.panel-body > :last-child{margin-bottom:0}
+#panel #leaderPlanner{padding:0}.route-picker{margin:0 0 8px}.route-picker label{display:block;margin-bottom:5px;font-size:12px;color:var(--muted)}
+#importTracksBox .analysis-target{padding:7px 10px;margin-bottom:10px;border:0}.analysis-target .name{font-size:13px;overflow-wrap:anywhere}
+#trackList {max-height:260px}#trackList li{flex-wrap:nowrap;gap:6px;padding:8px 10px}#trackList .t{flex:1;min-width:80px;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;line-height:1.5}
+#trackList li.track-active{background:var(--brand-soft);box-shadow:inset 3px 0 var(--brand)}
+#trackList button{font-size:11px;padding:5px 10px;min-height:30px}
+#trackFeedback:empty{display:none}#trackFeedback{margin-top:10px;color:var(--ink-secondary)}
+#exportBox #projectTitleText{display:block;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+@media(max-width:900px){.panel-module > summary{padding:12px}.panel-body{padding:12px}.tabs{flex-direction:row}.tab-btn{padding:10px 8px}.workspace-header{margin:14px 0}#panel #leaderPlanner{padding:0}}
+@media(prefers-reduced-motion:reduce){.panel-module > summary::before{transition:none}}

@@ -34,7 +34,7 @@ serializeProject=function() {
   p.version=3;p.breaks=[...routeBreaks];p.segmentPlans=structuredClone(segmentPlans);p.revision=routeRevision;p.role=routeRole;p.departureTime=departureTime;
   p.annotations=annos.map(cleanAnnotation);
   p.tracks=tracks.map(t=>({id:t.id,name:t.name,route:t.route,ele:t.ele,color:t.color,breaks:t.breaks||[],annotations:(t.annotations||[]).map(cleanAnnotation),
-    breakpoints:t.breakpoints||[],segmentPlans:t.segmentPlans||[],revision:t.revision||1,role:t.role||'main',placemarks:t.placemarks||[],suppressedPlacemarkKeys:t.suppressedPlacemarkKeys||[]}));
+    breakpoints:t.breakpoints||[],segmentPlans:t.segmentPlans||[],revision:t.revision||1,role:t.role||'main',origin:t.origin||'imported',placemarks:t.placemarks||[],suppressedPlacemarkKeys:t.suppressedPlacemarkKeys||[]}));
   return p;
 };
 const baseRestoreProject=restoreProject;
@@ -48,7 +48,7 @@ restoreProject=function(p) {
   tracks.forEach((tr,i)=>{
     const saved=incoming.tracks[i];
     Object.assign(tr,{breaks:saved.breaks||[],annotations:(saved.annotations||[]).map(cleanAnnotation),breakpoints:saved.breakpoints||[],
-      segmentPlans:saved.segmentPlans||[],revision:saved.revision||1,role:saved.role||'main'});
+      segmentPlans:saved.segmentPlans||[],revision:saved.revision||1,role:saved.role||'main',origin:saved.origin==='stitched'?'stitched':'imported'});
     linkImportedAnnotations(tr,tr.annotations);
     tr.layer.setLatLngs(RouteCore.parts(tr.route,tr.breaks));
     tr.layer.on('click',()=>{applyTrackAsActive(tr);redrawActiveRoute();renderTrackList();observeChanges();});
@@ -62,6 +62,7 @@ const basePushTrack=pushImportedTrack;
 pushImportedTrack=function(parsed) {
   const tr=basePushTrack(parsed);
   tr.layer.setLatLngs(RouteCore.parts(tr.route,tr.breaks));
+  tr.origin=parsed.origin==='stitched'?'stitched':'imported';
   if(parsed.role)tr.role=parsed.role;if(parsed.revision)tr.revision=parsed.revision;
   return tr;
 };
@@ -168,9 +169,11 @@ $('buildBtn').onclick=()=>{
   const built=RouteCore.stitch(clips);
   if(built.route.length<2){alert(t('mergedTooShort'));return;}
   if(built.breaks.length&&!confirm(say(`存在 ${built.breaks.length} 处断段。保留为未确认缺口并生成路线？不会自动补成道路。`,`There are ${built.breaks.length} gaps. Build with unconfirmed gaps preserved?`)))return;
-  const name=prompt(say('新路线名称','New route name'),say('拼接路线','Stitched route'));if(name===null)return;
-  saveActiveTrackState();const tr=pushImportedTrack({...built,name:name.trim()||say('拼接路线','Stitched route')});
-  applyTrackAsActive(tr);redrawActiveRoute();renderTrackList();
+  const prefix=say('拼接轨迹','Stitched route');let number=1;
+  while(tracks.some(tr=>tr.name===`${prefix} ${number}`))number++;
+  saveActiveTrackState();const tr=pushImportedTrack({...built,name:`${prefix} ${number}`,origin:'stitched'});
+  applyTrackAsActive(tr);redrawActiveRoute();renderTrackList();observeChanges();
+  window.Sidebar?.announceTrack(tr);
 };
 $('autoSplitBtn').onclick=()=>{
   if(route.length<3)return;
@@ -229,6 +232,7 @@ function revealAnnotation(annotation) {
   const index=annos.indexOf(annotation);
   if(index<0)return;
   setToolTab('analysis');
+  window.Sidebar?.openModule('annotationsBox');
   const items=[...$('annoList').children];
   items.forEach((li,i)=>li.classList.toggle('anno-selected',i===index));
   items[index]?.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'center',inline:'nearest'});
@@ -533,8 +537,11 @@ syncAnalysisTargetUI=function() {
 renderTrackList=function() {
   const list=$('trackList');list.replaceChildren();
   tracks.forEach(tr=>{
-    const li=document.createElement('li'),text=document.createElement('span');text.className='t';text.style.color=/^#[0-9a-f]{6}$/i.test(tr.color)?tr.color:'#2563eb';
+    const li=document.createElement('li'),text=document.createElement('span');
+    li.dataset.trackId=tr.id;li.classList.toggle('track-active',tr.id===activeTrackId);if(tr.id===activeTrackId)li.setAttribute('aria-current','true');
+    text.className='t';text.style.color=/^#[0-9a-f]{6}$/i.test(tr.color)?tr.color:'#2563eb';
     text.textContent=`${tr.name} · ${roleLabel(tr.id===activeTrackId?routeRole:tr.role)} · v${tr.id===activeTrackId?routeRevision:tr.revision||1}${tr.id===activeTrackId?' '+t('currentAnalyzingTag'):''}`;
+    text.title=text.textContent;
     const select=document.createElement('button');select.textContent=t('setAsAnalysis');select.onclick=()=>{applyTrackAsActive(tr);redrawActiveRoute();renderTrackList();};
     const remove=document.createElement('button');remove.textContent=t('remove');remove.onclick=()=>{
       if(!confirm(say(`移除「${tr.name}」？可以撤销。`,`Remove “${tr.name}”? Undo is available.`)))return;
@@ -544,6 +551,7 @@ renderTrackList=function() {
       renderTrackList();updateStats();renderPlanner();
     };li.append(text,select,remove);list.append(li);
   });syncAnalysisTargetUI();
+  window.Sidebar?.updateTrackCount();
 };
 const baseApplyLanguage=applyLanguage;
 applyLanguage=function() {
@@ -560,6 +568,7 @@ applyLanguage=function() {
   const head=$('bpSegTbody').closest('table').querySelector('thead th:nth-child(2)');if(head)head.textContent=say('里程范围','Distance range');
   renderPlanner();renderTrackList();
   if(mapScaleControl)mapScaleControl.update();
+  window.Sidebar?.translate();
 };
 $('pickBtn').onclick=()=>{
   if(route.length<2)return;

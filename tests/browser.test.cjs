@@ -9,7 +9,8 @@ const server=http.createServer((req,res)=>{const name=decodeURIComponent(new URL
  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];
  page.setDefaultTimeout(10000);page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.type()==='prompt'?d.accept('Test stitched route'):d.accept());
  await page.route('**/*',r=>r.request().url().startsWith('http://127.0.0.1')?r.continue():r.abort());
- await page.goto(`http://127.0.0.1:${server.address().port}/Trace_planner.html`);await page.waitForSelector('#leaderPlanner');
+ await page.goto(`http://127.0.0.1:${server.address().port}/Trace_planner.html`);await page.waitForSelector('#leaderPlanner',{state:'attached'});
+ await page.click('#tabAnalysis');await page.click('#expandModulesBtn');await page.click('#tabStitch');await page.click('#expandModulesBtn');
  // The visible ruler must match geodesic distance at the centre latitude, on any basemap.
  const checkScale=async()=>{
    assert.equal(await page.locator('.map-scale').count(),1);
@@ -109,6 +110,8 @@ const server=http.createServer((req,res)=>{const name=decodeURIComponent(new URL
  const reexported=await page.evaluate(()=>{const a=parseKmlText(routeToKml(route,annos,'edited'),'edited.kml');const b=parseGpxText(routeToGpx(route,annos,'edited'),'edited.gpx');return [a,b].map(p=>p.annotations.map(a=>({id:a.importId,position:a.latlng})));});
  for(const a of reexported)assert.deepEqual(a.find(a=>a.id===waypointId).position,[30.0002,120.0003]);
  // Delete a moved imported point by its source identity, while retaining the colocated camp.
+ await page.evaluate(()=>map.closePopup());
+ await page.waitForFunction(()=>!document.querySelector('.leaflet-popup'));
  await page.evaluate(()=>{observeChanges();map.setView(annos[0].latlng,16);annos[0].marker.openPopup();});
  await page.getByRole('button',{name:'删除路点',exact:true}).click();
  await page.locator('.leaflet-popup').waitFor({state:'detached'});
@@ -142,7 +145,7 @@ const server=http.createServer((req,res)=>{const name=decodeURIComponent(new URL
  assert.equal(await page.locator('#printRoadbookBtn').textContent(),'Print roadbook / Save PDF');
  // Application caching supports an offline revisit; route data remains in the local draft.
  await page.evaluate(()=>navigator.serviceWorker.ready);await page.waitForFunction(()=>navigator.serviceWorker.controller);
- await page.context().setOffline(true);await page.reload();await page.waitForSelector('#leaderPlanner');
+ await page.context().setOffline(true);await page.reload();await page.waitForSelector('#leaderPlanner',{state:'attached'});
  await page.click('#restoreDraftBtn');assert.equal(await page.evaluate(()=>activeSource),'Leader main route');
  await checkScale();
  await page.context().setOffline(false);

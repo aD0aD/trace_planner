@@ -142,3 +142,9 @@ Open the [website](https://ad0ad.github.io/trace_planner/), expand **Local DEM t
 Uncovered areas and missing elevations stay blank. For large datasets, start with a smaller crop. Terrain detail is limited by the source DEM resolution, and original track elevations remain unchanged.
 
 DEM files are processed in your browser and are not uploaded. Project JSON saves drawing settings and source-file information, but does not include the DEM itself. Reselect the corresponding DEM files when reopening a project.
+
+## Sidebar workspaces (2026-10-19)
+
+Both tabs share one route library (imported and stitched routes), current-route overview, and combined export/project module. Stitching contains online search, clipping and the basket. Analysis contains the elevation profile, calculation settings, segments, waypoints, leader itinerary and local DEM tools.
+
+Click any module heading to collapse it. Fold states persist across tabs and reloads in this browser. Expand/collapse all affects only the current workspace and shared modules. Stitched routes are automatically named and retained in the shared list and local draft; switch between them in either tab. Rename them in the analysis itinerary module and download project JSON for a complete backup or handover.

@@ -12,7 +12,7 @@ const server=http.createServer((req,res)=>{const name=decodeURIComponent(new URL
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];
   page.setDefaultTimeout(30000);page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
   await page.route('**/*',r=>r.request().url().startsWith('http://127.0.0.1')?r.continue():r.abort());
-  await page.goto(`http://127.0.0.1:${server.address().port}/Trace_planner.html`);await page.waitForSelector('#demPanel');
+  await page.goto(`http://127.0.0.1:${server.address().port}/Trace_planner.html`);await page.waitForSelector('#demPanel',{state:'attached'});await page.click('#tabAnalysis');
   await page.locator('#demPanel summary').click();assert.equal(await page.inputValue('#demInterval'),'20');
   let files;
   if(real) {
@@ -110,7 +110,7 @@ const server=http.createServer((req,res)=>{const name=decodeURIComponent(new URL
   await page.selectOption('#demCropMode','view');await page.evaluate(()=>map.setView([0,0],12));await page.waitForFunction(()=>document.getElementById('demStatus').textContent.includes('No DEM covers'));
   // Cached worker/library assets must support a new local import on an offline revisit.
   await page.evaluate(()=>navigator.serviceWorker.ready);await page.waitForFunction(()=>!!navigator.serviceWorker.controller);
-  await page.context().setOffline(true);await page.reload();await page.waitForSelector('#demPanel');
+  await page.context().setOffline(true);await page.reload();await page.waitForSelector('#demPanel',{state:'attached'});await page.click('#tabAnalysis');
   await page.evaluate(p=>restoreProject(p),project);assert.equal(await page.evaluate(()=>Terrain.state.sources.length),0);
   await page.setInputFiles('#demInput',files);await page.waitForFunction(()=>Terrain.state.result?.interval===20,{},{timeout:90000});
   assert.equal(await page.evaluate(()=>Terrain.state.result.stats.used.length),2);assert.equal(await page.evaluate(()=>Terrain.state.result.stats.cacheHit),false);await page.context().setOffline(false);

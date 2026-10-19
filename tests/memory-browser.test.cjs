@@ -26,7 +26,7 @@ const server=http.createServer((req,res)=>{const file=path.resolve(root,'.'+new 
   await page.evaluate(()=>historyMove(false));await page.evaluate(()=>historyMove(true));
   await page.evaluate(s=>{restoreProject(JSON.parse(s));observeChanges();},baseline);
   assert.equal(await page.evaluate(()=>snapshot()),baseline);
-  console.log('Undo and redo verified');const downloadPromise=page.waitForEvent('download');await page.click('#saveProjectBtn');const download=await downloadPromise;
+  console.log('Undo and redo verified');await page.locator('#exportBox > summary').click();const downloadPromise=page.waitForEvent('download');await page.click('#saveProjectBtn');const download=await downloadPromise;
   const saved=await download.path();if(process.env.TRACE_MEMORY_OUTPUT)await download.saveAs(process.env.TRACE_MEMORY_OUTPUT);
   await page.locator('#loadProjectInput').setInputFiles(saved);
   await page.waitForFunction(()=>history.length===0);
